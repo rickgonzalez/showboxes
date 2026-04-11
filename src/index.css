@@ -1,0 +1,288 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: #e6e8ee;
+  background: #0b1020;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 150ms ease, transform 150ms ease, border-color 150ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---------- App layout ---------- */
+
+.sb-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: radial-gradient(ellipse at top, #18223d 0%, #0b1020 60%);
+}
+
+.sb-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-wrap: wrap;
+}
+
+.sb-toolbar h1 {
+  font-size: 18px;
+  margin: 0 12px 0 0;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+}
+
+.sb-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb-toolbar-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.6;
+  margin-right: 4px;
+}
+
+.sb-stage-host {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ---------- Presentation: layered DOM + canvas ---------- */
+
+.sb-presentation {
+  position: absolute;
+  inset: 0;
+}
+
+.sb-dom-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* Child interactive elements can re-enable pointer events. */
+}
+
+.sb-canvas-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* ---------- title-bullets template ---------- */
+
+.sb-bullets {
+  position: absolute;
+  top: 260px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(820px, 80%);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 26px;
+  line-height: 1.5;
+}
+
+.sb-bullets li {
+  position: relative;
+  padding: 10px 16px 10px 44px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 450ms ease, transform 450ms ease, background 300ms ease, box-shadow 300ms ease;
+}
+
+.sb-bullets li::before {
+  content: '';
+  position: absolute;
+  left: 18px;
+  top: 22px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #60a5fa;
+  box-shadow: 0 0 12px rgba(96, 165, 250, 0.6);
+}
+
+.sb-bullets li.sb-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.sb-bullets li.sb-emphasize {
+  background: rgba(255, 235, 59, 0.14);
+  box-shadow: inset 4px 0 0 #ffeb3b, 0 0 0 1px rgba(255, 235, 59, 0.3);
+}
+
+/* ---------- code-zoom template ---------- */
+
+.sb-code-wrapper {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(var(--sb-start-scale, 0.15));
+  opacity: 0;
+  max-width: 85%;
+  max-height: 80%;
+  transition: transform 700ms cubic-bezier(0.2, 0.9, 0.25, 1.15), opacity 350ms ease;
+  pointer-events: auto;
+}
+
+.sb-code-wrapper.sb-zoom-active {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+
+.sb-code-wrapper.sb-zoom-out {
+  transform: translate(-50%, -50%) scale(0.2);
+  opacity: 0;
+}
+
+.sb-code {
+  margin: 0;
+  padding: 28px 36px;
+  background: #1e1e2e;
+  border-radius: 14px;
+  font-family: 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+  font-size: 22px;
+  line-height: 1.55;
+  color: #e6e8ee;
+  overflow: auto;
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.sb-code code {
+  display: block;
+  white-space: pre;
+}
+
+.sb-line {
+  display: inline-block;
+  width: 100%;
+  padding: 0 10px;
+  margin: 0 -10px;
+  border-radius: 4px;
+  transition: background-color 300ms ease, box-shadow 300ms ease;
+}
+
+.sb-line-highlight {
+  background: rgba(255, 235, 59, 0.12);
+  box-shadow: inset 3px 0 0 #ffeb3b;
+}
+
+.sb-line-pulse {
+  animation: sb-pulse 1.4s ease;
+}
+
+@keyframes sb-pulse {
+  0%,
+  100% {
+    background-color: rgba(255, 235, 59, 0);
+    box-shadow: inset 3px 0 0 rgba(255, 235, 59, 0);
+  }
+  30%,
+  60% {
+    background-color: rgba(255, 235, 59, 0.35);
+    box-shadow: inset 3px 0 0 #ffeb3b;
+  }
+}
+
+/* ---------- Prism: Tomorrow-ish dark token colors ---------- */
+
+.sb-code .token.comment,
+.sb-code .token.prolog,
+.sb-code .token.doctype,
+.sb-code .token.cdata {
+  color: #6a737d;
+  font-style: italic;
+}
+
+.sb-code .token.punctuation {
+  color: #c9d1d9;
+}
+
+.sb-code .token.property,
+.sb-code .token.tag,
+.sb-code .token.boolean,
+.sb-code .token.number,
+.sb-code .token.constant,
+.sb-code .token.symbol {
+  color: #f78c6c;
+}
+
+.sb-code .token.selector,
+.sb-code .token.attr-name,
+.sb-code .token.string,
+.sb-code .token.char,
+.sb-code .token.builtin {
+  color: #9ece6a;
+}
+
+.sb-code .token.operator,
+.sb-code .token.entity,
+.sb-code .token.url,
+.sb-code .token.variable {
+  color: #89ddff;
+}
+
+.sb-code .token.atrule,
+.sb-code .token.attr-value,
+.sb-code .token.function,
+.sb-code .token.class-name {
+  color: #7aa2f7;
+}
+
+.sb-code .token.keyword {
+  color: #bb9af7;
+  font-weight: 600;
+}
+
+.sb-code .token.regex,
+.sb-code .token.important {
+  color: #f7768e;
+}
