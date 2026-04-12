@@ -1,4 +1,5 @@
 import { Stage } from '../core/Stage';
+import { Stage3D } from '../core/Stage3D';
 import { TextBox } from '../core/TextBox';
 import { applyFx, listFx } from '../core/fx';
 import type { EffectSpec, TextBoxOptions, TextStyle } from '../core/types';
@@ -30,10 +31,26 @@ export interface TextBoxHandle {
 export class Presenter {
   readonly stage: Stage;
   readonly domRoot: HTMLElement;
+  /** 3D layer host — lazily created the first time a template asks for it. */
+  private stage3dHost: HTMLElement | null;
+  private _stage3d: Stage3D | null = null;
 
-  constructor(canvas: HTMLCanvasElement, domRoot: HTMLElement) {
+  constructor(canvas: HTMLCanvasElement, domRoot: HTMLElement, stage3dHost?: HTMLElement) {
     this.stage = new Stage(canvas);
     this.domRoot = domRoot;
+    this.stage3dHost = stage3dHost ?? null;
+  }
+
+  /**
+   * Lazy accessor for the 3D stage. Only constructs (and loads three.js
+   * scenery) when a template actually needs it. Returns null if no
+   * 3D host element was provided to the Presenter.
+   */
+  get stage3d(): Stage3D | null {
+    if (this._stage3d) return this._stage3d;
+    if (!this.stage3dHost) return null;
+    this._stage3d = new Stage3D(this.stage3dHost);
+    return this._stage3d;
   }
 
   /** Object form — what the agent will emit. */
@@ -88,10 +105,11 @@ export class Presenter {
     return template.render(this, spec.content);
   }
 
-  /** Clear everything on both layers. Useful between slides. */
+  /** Clear everything on all layers. Useful between slides. */
   clear(): void {
     this.stage.clear();
     while (this.domRoot.firstChild) this.domRoot.removeChild(this.domRoot.firstChild);
+    this._stage3d?.clear();
   }
 
   /** Discovery helpers — useful when exposing this as an agent tool. */

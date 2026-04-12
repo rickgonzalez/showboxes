@@ -1,0 +1,626 @@
+{
+  "_commentary": "This script is UNCONSTRAINED — the Producer agent uses whatever visual primitives it needs, including ones that don't exist yet. Primitives marked 🆕 are new inventions. The settings slider was: audience=0.3 (non-technical), detail=0.6, pace=0.4 (slow), persona=friendly.",
+
+  "meta": {
+    "title": "Invoicely — What Your App Actually Does",
+    "repoUrl": "https://github.com/mikaldev/invoicely",
+    "generatedAt": "2026-04-12T18:30:00Z",
+    "persona": "friendly",
+    "estimatedDuration": 195
+  },
+
+  "defaults": {
+    "palette": {
+      "primary": "#3b82f6",
+      "secondary": "#a855f7",
+      "accent": "#f59e0b",
+      "background": "#0f172a",
+      "text": "#f8fafc",
+      "code": "#94a3b8"
+    },
+    "transition": { "type": "fade", "durationMs": 500 },
+    "voice": { "provider": "elevenlabs", "voiceId": "rachel", "speed": 0.9 }
+  },
+
+  "scenes": [
+    {
+      "id": "s01-title",
+      "section": "quickFacts",
+      "primitive": {
+        "template": "title-bullets",
+        "content": {
+          "title": "Invoicely",
+          "bullets": [
+            "A billing app for freelancers and small teams.",
+            "Built with Next.js, Stripe, and a PostgreSQL database.",
+            "~12,000 lines of TypeScript across 147 files."
+          ],
+          "titleFx": [{ "name": "zoom", "duration": 800, "from": 0, "to": 1 }]
+        }
+      },
+      "narration": "This is Invoicely. It's a web app that helps freelancers create invoices, send them to clients, and get paid online. Let's walk through what it does and how it's built.",
+      "holdSeconds": 8
+    },
+
+    {
+      "id": "s02-what-it-does",
+      "section": "plainEnglish",
+      "_note": "🆕 NARRATIVE-CARD: A template that shows a short story/scenario with an illustration or avatar on one side and text on the other. Think of a children's book layout. Good for making abstract apps concrete.",
+      "primitive": {
+        "template": "narrative-card",
+        "content": {
+          "scene": "A freelance designer sits at their laptop. They just finished a logo project for a client. Now they need to get paid.",
+          "actor": { "label": "The Designer", "emoji": "🎨" },
+          "caption": "Every month, 15 clients. Every client, a different invoice. Every invoice, a different amount.",
+          "mood": "warm"
+        }
+      },
+      "narration": "Imagine a freelance designer who works with fifteen different clients. Every month, they need to bill each one for the work they did. That's what Invoicely is for.",
+      "holdSeconds": 8
+    },
+
+    {
+      "id": "s03-user-journey",
+      "section": "plainEnglish",
+      "_note": "🆕 STEP-JOURNEY: A horizontal walkthrough showing a user journey as labeled steps with icons, connected by a progress line. Each step lights up as the narration reaches it. Like a subway map for user flows.",
+      "primitive": {
+        "template": "step-journey",
+        "content": {
+          "title": "Creating and sending an invoice",
+          "steps": [
+            { "icon": "➕", "label": "New Invoice", "detail": "Pick a client, add line items" },
+            { "icon": "🧮", "label": "Calculate", "detail": "Subtotal, discount, tax, total" },
+            { "icon": "👀", "label": "Preview", "detail": "See the PDF before sending" },
+            { "icon": "📤", "label": "Send", "detail": "Email with PDF + Pay Now link" },
+            { "icon": "💳", "label": "Client Pays", "detail": "Stripe Checkout handles the rest" },
+            { "icon": "✅", "label": "Paid!", "detail": "Dashboard updates, receipt sent" }
+          ],
+          "activeColor": "palette.primary",
+          "staggerMs": 1200
+        }
+      },
+      "narration": "Here's the journey. The designer creates a new invoice, adds their line items, the app calculates the total, they preview it as a PDF, and hit send. The client gets an email with a Pay Now button. When they pay through Stripe, the invoice is automatically marked as paid and a receipt goes out.",
+      "holdSeconds": 14,
+      "beats": [
+        { "at": 2.0, "action": { "type": "emphasize", "target": "0" } },
+        { "at": 4.0, "action": { "type": "emphasize", "target": "1" } },
+        { "at": 6.0, "action": { "type": "emphasize", "target": "2" } },
+        { "at": 8.0, "action": { "type": "emphasize", "target": "3" } },
+        { "at": 10.0, "action": { "type": "emphasize", "target": "4" } },
+        { "at": 12.0, "action": { "type": "emphasize", "target": "5" } }
+      ]
+    },
+
+    {
+      "id": "s04-architecture",
+      "section": "architecture",
+      "primitive": {
+        "template": "flow-diagram",
+        "content": {
+          "nodes": [
+            { "id": "user", "label": "User", "icon": "🧑", "group": "frontend" },
+            { "id": "dashboard", "label": "Dashboard", "icon": "📊", "group": "frontend" },
+            { "id": "engine", "label": "Invoice Engine", "icon": "⚙", "group": "backend" },
+            { "id": "stripe", "label": "Stripe", "icon": "💳", "group": "external" },
+            { "id": "email", "label": "Resend (Email)", "icon": "📧", "group": "external" },
+            { "id": "db", "label": "Postgres", "icon": "💾", "group": "data" }
+          ],
+          "edges": [
+            { "from": "user", "to": "dashboard", "label": "browses" },
+            { "from": "dashboard", "to": "engine", "label": "Server Actions" },
+            { "from": "engine", "to": "db", "label": "read/write" },
+            { "from": "engine", "to": "stripe", "label": "create payment link" },
+            { "from": "engine", "to": "email", "label": "send invoice" },
+            { "from": "stripe", "to": "engine", "label": "webhook: paid!" },
+            { "from": "email", "to": "engine", "label": "webhook: delivered" }
+          ],
+          "groups": [
+            { "id": "frontend", "label": "What the user sees", "color": "palette.primary" },
+            { "id": "backend", "label": "The brain", "color": "palette.secondary" },
+            { "id": "external", "label": "Outside services", "color": "palette.accent" },
+            { "id": "data", "label": "Storage", "color": "#10b981" }
+          ],
+          "staggerMs": 400,
+          "layout": "top-to-bottom"
+        }
+      },
+      "narration": "Here's how the pieces connect. The user interacts with the dashboard, which talks to the invoice engine — the brain of the app. The engine reads and writes to the database, creates payment links through Stripe, and sends emails through Resend. When a payment happens, Stripe rings the doorbell — sending a webhook back to the engine.",
+      "holdSeconds": 12,
+      "beats": [
+        { "at": 6.0, "action": { "type": "emphasize", "target": "stripe" } },
+        { "at": 9.0, "action": { "type": "emphasize", "target": "engine" } }
+      ]
+    },
+
+    {
+      "id": "s05-webhook-analogy",
+      "section": "plainEnglish",
+      "_note": "🆕 SPLIT-ANALOGY: Two-panel template. Left panel shows the technical concept (webhook flow). Right panel shows the real-world analogy (doorbell). Both animate in sync. Great for the audience=0.3 non-technical setting.",
+      "primitive": {
+        "template": "split-analogy",
+        "content": {
+          "technical": {
+            "title": "Webhook",
+            "visual": "sequence-diagram",
+            "content": {
+              "actors": [
+                { "id": "stripe", "label": "Stripe" },
+                { "id": "app", "label": "Invoicely" }
+              ],
+              "steps": [
+                { "from": "stripe", "to": "app", "label": "POST /webhook", "kind": "request" },
+                { "from": "app", "to": "app", "label": "update invoice", "kind": "self" },
+                { "from": "app", "to": "stripe", "label": "200 OK", "kind": "response" }
+              ]
+            }
+          },
+          "analogy": {
+            "title": "The Doorbell",
+            "text": "When someone pays, Stripe rings the doorbell — it sends a message to a specific address. Invoicely answers, reads the message, and updates its records. Without the doorbell, it would have to keep calling Stripe every few seconds asking 'any payments yet?'",
+            "emoji": "🔔"
+          }
+        }
+      },
+      "narration": "Let me explain webhooks with an analogy. A webhook is like a doorbell. When something happens at Stripe — say, a payment goes through — Stripe rings Invoicely's doorbell by sending a message to a specific web address. Invoicely answers the door, reads the message, and updates its records. Without this doorbell, the app would have to keep calling Stripe every few seconds asking 'got anything new?' That's wasteful and slow.",
+      "holdSeconds": 14
+    },
+
+    {
+      "id": "s06-data-model",
+      "section": "architecture",
+      "_note": "🆕 ENTITY-MAP: Shows database tables/models as cards with their key fields listed, connected by relationship lines (one-to-many, many-to-many). Like an ER diagram but friendlier — cards instead of boxes, icons instead of crow's feet, and plain-English relationship labels.",
+      "primitive": {
+        "template": "entity-map",
+        "content": {
+          "entities": [
+            {
+              "id": "user",
+              "label": "User",
+              "icon": "👤",
+              "fields": ["name", "email", "role"],
+              "color": "palette.primary"
+            },
+            {
+              "id": "org",
+              "label": "Organization",
+              "icon": "🏢",
+              "fields": ["name", "logo", "settings"],
+              "color": "palette.primary"
+            },
+            {
+              "id": "client",
+              "label": "Client",
+              "icon": "🤝",
+              "fields": ["name", "email", "address"],
+              "color": "palette.secondary"
+            },
+            {
+              "id": "invoice",
+              "label": "Invoice",
+              "icon": "📄",
+              "fields": ["status", "total", "dueDate", "notes"],
+              "color": "palette.accent"
+            },
+            {
+              "id": "item",
+              "label": "Line Item",
+              "icon": "📝",
+              "fields": ["description", "quantity", "unitPrice"],
+              "color": "palette.accent"
+            },
+            {
+              "id": "payment",
+              "label": "Payment",
+              "icon": "💰",
+              "fields": ["amount", "stripeId", "paidAt"],
+              "color": "#10b981"
+            },
+            {
+              "id": "subscription",
+              "label": "Subscription",
+              "icon": "🔄",
+              "fields": ["frequency", "nextDate", "autoSend"],
+              "color": "#8b5cf6"
+            }
+          ],
+          "relationships": [
+            { "from": "user", "to": "org", "label": "belongs to", "type": "many-to-one" },
+            { "from": "org", "to": "client", "label": "has many", "type": "one-to-many" },
+            { "from": "client", "to": "invoice", "label": "receives", "type": "one-to-many" },
+            { "from": "invoice", "to": "item", "label": "contains", "type": "one-to-many" },
+            { "from": "invoice", "to": "payment", "label": "paid by", "type": "one-to-one" },
+            { "from": "client", "to": "subscription", "label": "has", "type": "one-to-many" },
+            { "from": "subscription", "to": "invoice", "label": "generates", "type": "one-to-many" }
+          ],
+          "staggerMs": 300,
+          "layout": "hierarchical"
+        }
+      },
+      "narration": "Here's how the data is organized. Users belong to an organization. The organization has clients. Each client receives invoices, and each invoice contains line items — the individual charges. When a client pays, a payment record links to the invoice. And for clients who are billed regularly, a subscription record tracks the schedule and automatically generates new invoices.",
+      "holdSeconds": 14,
+      "beats": [
+        { "at": 3.0, "action": { "type": "emphasize", "target": "invoice" } },
+        { "at": 6.0, "action": { "type": "emphasize", "target": "item" } },
+        { "at": 9.0, "action": { "type": "emphasize", "target": "subscription" } }
+      ]
+    },
+
+    {
+      "id": "s07-line-item-calc",
+      "section": "codeQuality",
+      "_note": "🆕 DATA-PIPELINE: Shows data being transformed through stages, but unlike transform-grid, each stage shows the ACTUAL DATA changing — an array of objects being filtered, mapped, reduced. Think of it as a debugger's watch window animated step by step. This is the 'arrays and data processing' primitive Rick identified as missing.",
+      "primitive": {
+        "template": "data-pipeline",
+        "content": {
+          "title": "How the invoice total is calculated",
+          "input": {
+            "label": "Line Items",
+            "data": [
+              { "description": "Logo design", "qty": 8, "price": 150 },
+              { "description": "Brand guide", "qty": 1, "price": 500 },
+              { "description": "Social assets", "qty": 12, "price": 75 }
+            ],
+            "display": "table"
+          },
+          "stages": [
+            {
+              "operation": "map → multiply",
+              "label": "Calculate each line total",
+              "result": [
+                { "description": "Logo design", "lineTotal": 1200 },
+                { "description": "Brand guide", "lineTotal": 500 },
+                { "description": "Social assets", "lineTotal": 900 }
+              ],
+              "highlight": "lineTotal",
+              "display": "table"
+            },
+            {
+              "operation": "reduce → sum",
+              "label": "Add them up",
+              "result": { "subtotal": 2600 },
+              "display": "value"
+            },
+            {
+              "operation": "apply discount",
+              "label": "10% loyalty discount",
+              "result": { "subtotal": 2600, "discount": -260, "afterDiscount": 2340 },
+              "display": "breakdown"
+            },
+            {
+              "operation": "apply tax",
+              "label": "8.25% sales tax",
+              "result": { "afterDiscount": 2340, "tax": 193.05, "total": 2533.05 },
+              "highlight": "total",
+              "display": "breakdown"
+            }
+          ],
+          "staggerMs": 1500
+        }
+      },
+      "narration": "Let's trace how an invoice total gets calculated. We start with three line items — logo design at 150 dollars an hour for 8 hours, a brand guide for 500, and twelve social assets at 75 each. First, each line gets multiplied out. Then they're added up to a subtotal of twenty-six hundred dollars. A ten percent loyalty discount brings it to twenty-three forty. And finally, sales tax of eight and a quarter percent brings the total to twenty-five thirty-three and five cents.",
+      "holdSeconds": 16,
+      "beats": [
+        { "at": 4.0, "action": { "type": "emphasize", "target": "0" } },
+        { "at": 7.0, "action": { "type": "emphasize", "target": "1" } },
+        { "at": 10.0, "action": { "type": "emphasize", "target": "2" } },
+        { "at": 13.0, "action": { "type": "emphasize", "target": "3" } }
+      ]
+    },
+
+    {
+      "id": "s08-recurring-scheduler",
+      "section": "architecture",
+      "_note": "🆕 TIMELINE: A vertical or horizontal timeline showing events in chronological order. Each event has a timestamp, a label, and an optional detail block. Good for cron jobs, event sequences, deployment history. The time axis makes it different from step-journey (which is task-based) and sequence-diagram (which is actor-based).",
+      "primitive": {
+        "template": "timeline",
+        "content": {
+          "title": "The recurring invoice scheduler",
+          "orientation": "horizontal",
+          "events": [
+            { "time": "6:00 AM", "label": "Cron fires", "detail": "Vercel triggers /api/cron/recurring", "icon": "⏰" },
+            { "time": "6:00 AM", "label": "Check schedule", "detail": "Find subscriptions where nextDate ≤ today", "icon": "🔍" },
+            { "time": "6:01 AM", "label": "Clone template", "detail": "Copy line items, update dates and amounts", "icon": "📋" },
+            { "time": "6:01 AM", "label": "Create invoice", "detail": "Status: SENT (auto) or DRAFT (manual)", "icon": "📄" },
+            { "time": "6:02 AM", "label": "Send email", "detail": "PDF attached + Pay Now link (if auto-send)", "icon": "📧" },
+            { "time": "6:02 AM", "label": "Advance date", "detail": "nextDate += interval (e.g. +1 month)", "icon": "📅" }
+          ],
+          "staggerMs": 800
+        }
+      },
+      "narration": "Every morning at six AM, an automated scheduler wakes up and checks: are any recurring invoices due today? It looks at all the subscriptions, finds the ones that are due, clones the template invoice with fresh dates, creates the new invoice, sends the email if auto-send is on, and advances the next billing date. It's like a mail carrier with a calendar — every morning it checks its delivery list.",
+      "holdSeconds": 14,
+      "beats": [
+        { "at": 5.0, "action": { "type": "emphasize", "target": "2" } },
+        { "at": 10.0, "action": { "type": "emphasize", "target": "5" } }
+      ]
+    },
+
+    {
+      "id": "s09-payment-sequence",
+      "section": "architecture",
+      "primitive": {
+        "template": "sequence-diagram",
+        "content": {
+          "title": "When a client pays an invoice",
+          "actors": [
+            { "id": "client", "label": "Client", "icon": "🤝" },
+            { "id": "stripe", "label": "Stripe", "icon": "💳" },
+            { "id": "webhook", "label": "Webhook Handler", "icon": "🔔" },
+            { "id": "engine", "label": "Invoice Engine", "icon": "⚙" },
+            { "id": "email", "label": "Email", "icon": "📧" }
+          ],
+          "steps": [
+            { "from": "client", "to": "stripe", "label": "Pay via Checkout", "kind": "request" },
+            { "from": "stripe", "to": "stripe", "label": "Process payment", "kind": "self" },
+            { "from": "stripe", "to": "webhook", "label": "checkout.session.completed", "kind": "request" },
+            { "from": "webhook", "to": "webhook", "label": "Verify signature", "kind": "self" },
+            { "from": "webhook", "to": "engine", "label": "Mark invoice PAID", "kind": "request" },
+            { "from": "engine", "to": "engine", "label": "Create Payment row", "kind": "self" },
+            { "from": "engine", "to": "email", "label": "Send receipt", "kind": "request" },
+            { "from": "email", "to": "client", "label": "Payment receipt", "kind": "response" }
+          ],
+          "staggerMs": 800
+        }
+      },
+      "narration": "Here's the full payment sequence. The client clicks Pay Now and lands on Stripe Checkout. Stripe processes the payment, then sends a webhook to Invoicely. The webhook handler verifies the signature to make sure it's really from Stripe, tells the invoice engine to mark the invoice as paid, the engine creates a payment record, and a receipt email goes out to the client.",
+      "holdSeconds": 14,
+      "beats": [
+        { "at": 4.0, "action": { "type": "emphasize", "target": "3" } },
+        { "at": 9.0, "action": { "type": "emphasize", "target": "5" } }
+      ]
+    },
+
+    {
+      "id": "s10-quality-overview",
+      "section": "codeQuality",
+      "_note": "🆕 SCORECARD: A grid of metrics/ratings with letter grades or numeric scores, color-coded. Like a report card. Each cell has a label, a grade, and a one-line note. Good for the quality assessment overview before drilling into details.",
+      "primitive": {
+        "template": "scorecard",
+        "content": {
+          "title": "Code Quality Report Card",
+          "overallGrade": "C",
+          "items": [
+            { "label": "Input Validation", "grade": "A", "note": "Zod on every boundary. Best practice." },
+            { "label": "Error Handling", "grade": "C", "note": "OK in actions, broken in webhooks." },
+            { "label": "Testing", "grade": "F", "note": "Zero tests. Zero coverage. Zero CI." },
+            { "label": "Type Safety", "grade": "B", "note": "Strict mode on, but 3 casts to `any`." },
+            { "label": "DB Patterns", "grade": "B+", "note": "Clean separation. Too many round trips." },
+            { "label": "Security", "grade": "D", "note": "XSS vulnerability in invoice notes." }
+          ]
+        }
+      },
+      "narration": "Overall, this codebase gets a C. Input validation is an A — every boundary is protected. Error handling is a mixed C. Testing is an F — there are zero tests. Type safety is a B with a few rough spots. Database patterns are clean but make too many trips. And security gets a D because of one critical vulnerability we need to talk about.",
+      "holdSeconds": 12,
+      "beats": [
+        { "at": 3.0, "action": { "type": "emphasize", "target": "0" } },
+        { "at": 7.0, "action": { "type": "emphasize", "target": "2" } },
+        { "at": 10.0, "action": { "type": "emphasize", "target": "5" } }
+      ]
+    },
+
+    {
+      "id": "s11-xss-vulnerability",
+      "section": "codeQuality",
+      "_note": "🆕 DANGER-ZONE: A code-zoom variant with a red-tinted background and warning iconography. The visual treatment screams 'this is a security problem.' The code block has a 'what could go wrong' annotation panel alongside it. Distinct from a regular code-zoom because the viewer should feel alarm, not curiosity.",
+      "primitive": {
+        "template": "danger-zone",
+        "content": {
+          "title": "Security: XSS in invoice notes",
+          "code": "<div dangerouslySetInnerHTML={{ __html: invoice.notes }} />",
+          "language": "tsx",
+          "highlight": [1],
+          "explanation": "If a client name or note contains <script>...</script>, it executes in the browser. In a billing app, this could steal sessions or exfiltrate financial data.",
+          "severity": "critical",
+          "fix": "Replace with DOMPurify sanitization or render as plain text. Five-minute fix."
+        }
+      },
+      "narration": "Here's the most urgent finding. This one line of code renders invoice notes as raw HTML — no sanitization. If any text entered into the notes field contains a script tag, it will execute in the dashboard. In a billing app that handles payment information, this is a critical security risk. The fix takes five minutes: use a sanitization library or just render it as plain text.",
+      "holdSeconds": 12,
+      "beats": [
+        { "at": 3.0, "action": { "type": "highlight-line", "line": 1 } }
+      ]
+    },
+
+    {
+      "id": "s12-webhook-bug",
+      "section": "codeQuality",
+      "_note": "🆕 BEFORE-AFTER: Two code blocks side by side. Left shows the current (problematic) code. Right shows the suggested fix. A visual diff without the complexity of actual diff syntax. Great for showing improvements at the audience=0.3 level where a full code review would lose people.",
+      "primitive": {
+        "template": "before-after",
+        "content": {
+          "title": "Webhook handler swallows errors",
+          "before": {
+            "label": "Current (broken)",
+            "code": "try {\n  await handleStripeEvent(event);\n} catch (err) {\n  console.error(err);\n  // BUG: returns 200 even on failure\n  // Stripe thinks it succeeded\n}\nreturn NextResponse.json({ ok: true });",
+            "language": "typescript",
+            "highlight": [4, 5, 6]
+          },
+          "after": {
+            "label": "Fixed",
+            "code": "try {\n  await handleStripeEvent(event);\n  return NextResponse.json({ ok: true });\n} catch (err) {\n  console.error(err);\n  // Return 500 so Stripe retries\n  return NextResponse.json(\n    { error: 'processing failed' },\n    { status: 500 }\n  );\n}",
+            "language": "typescript",
+            "highlight": [6, 7, 8, 9]
+          }
+        }
+      },
+      "narration": "The second big issue: the Stripe webhook handler catches errors but always returns a success response. That means if something goes wrong while processing a payment, Stripe thinks everything is fine and never retries. The fix is straightforward — return a 500 error so Stripe knows to try again. Stripe retries failed webhooks for up to three days, which gives you time to fix the underlying problem without losing any payments.",
+      "holdSeconds": 14
+    },
+
+    {
+      "id": "s13-complexity-hotspot",
+      "section": "codeQuality",
+      "_note": "🆕 HOTSPOT-MAP: A treemap or proportional grid showing files sized by complexity/lines, colored by health. Mousing over (or beat-emphasizing) a cell shows details. Gives an instant visual of 'where is the complexity concentrated?' Could also show it as a bubble chart.",
+      "primitive": {
+        "template": "hotspot-map",
+        "content": {
+          "title": "Where complexity lives",
+          "items": [
+            { "file": "recurring.ts", "lines": 182, "grade": "D", "note": "137-line function, 5 levels deep" },
+            { "file": "stripe/route.ts", "lines": 94, "grade": "C", "note": "8-case switch, inline mutations" },
+            { "file": "create.ts", "lines": 112, "grade": "C+", "note": "Duplicated calc logic" },
+            { "file": "page.tsx (dashboard)", "lines": 86, "grade": "B-", "note": "6 separate DB queries" },
+            { "file": "send.ts", "lines": 67, "grade": "B+", "note": "Clean, well-structured" },
+            { "file": "auth.ts", "lines": 45, "grade": "A", "note": "Simple, correct" },
+            { "file": "schemas.ts", "lines": 89, "grade": "A", "note": "Comprehensive validation" }
+          ],
+          "sizeBy": "lines",
+          "colorBy": "grade"
+        }
+      },
+      "narration": "Here's a map of where complexity lives in the codebase. The bigger the box, the more code. The redder the box, the more problematic. That big red block is the recurring scheduler — one hundred eighty-two lines with a single function that does way too much. The Stripe webhook handler is medium-sized but messy. And over on the right, the validation schemas and auth module are small and clean.",
+      "holdSeconds": 12,
+      "beats": [
+        { "at": 3.0, "action": { "type": "emphasize", "target": "recurring.ts" } },
+        { "at": 7.0, "action": { "type": "emphasize", "target": "schemas.ts" } }
+      ]
+    },
+
+    {
+      "id": "s14-tech-stack",
+      "section": "quickFacts",
+      "primitive": {
+        "template": "code-cloud",
+        "content": {
+          "items": [
+            { "text": "Next.js", "weight": 1.0, "category": "framework" },
+            { "text": "Prisma", "weight": 0.9, "category": "data" },
+            { "text": "Stripe", "weight": 0.85, "category": "payment" },
+            { "text": "Resend", "weight": 0.6, "category": "email" },
+            { "text": "Zod", "weight": 0.75, "category": "validation" },
+            { "text": "react-pdf", "weight": 0.5, "category": "rendering" },
+            { "text": "recharts", "weight": 0.4, "category": "rendering" },
+            { "text": "Tailwind", "weight": 0.7, "category": "styling" },
+            { "text": "date-fns", "weight": 0.35, "category": "utility" }
+          ],
+          "categoryColors": {
+            "framework": "palette.primary",
+            "data": "#10b981",
+            "payment": "palette.accent",
+            "email": "palette.secondary",
+            "validation": "#06b6d4",
+            "rendering": "#f472b6",
+            "styling": "#94a3b8",
+            "utility": "#64748b"
+          },
+          "entranceStyle": "spiral"
+        }
+      },
+      "narration": "Here's the tech stack at a glance — the bigger the word, the more central it is to the app. Next.js and Prisma are the foundation. Stripe handles all the money. Zod guards the gates. And the rest fill in specific roles like email, PDFs, and charts.",
+      "holdSeconds": 10,
+      "beats": [
+        { "at": 3.0, "action": { "type": "emphasize", "target": "Stripe" } },
+        { "at": 6.0, "action": { "type": "emphasize", "target": "Zod" } }
+      ]
+    },
+
+    {
+      "id": "s15-strengths",
+      "section": "codeQuality",
+      "primitive": {
+        "template": "purpose-bullets",
+        "content": {
+          "purpose": "What the developer did well",
+          "fileRef": "across the codebase",
+          "supports": [
+            { "point": "Zod validation on every input boundary — better than most production apps", "type": "strength" },
+            { "point": "All database access goes through service functions, never direct from components", "type": "strength" },
+            { "point": "Stripe webhook signature verification is correct and complete", "type": "strength" },
+            { "point": "The invoice PDF output looks genuinely professional", "type": "strength" }
+          ]
+        }
+      },
+      "narration": "Before we wrap up, let's talk about what's done well. The input validation is excellent. The database architecture is clean and well-organized. The Stripe integration is secure. And the PDF invoices look great. This developer clearly cares about quality — the issues we found are the kind that accumulate during fast iteration, not from carelessness.",
+      "holdSeconds": 10,
+      "beats": [
+        { "at": 3.0, "action": { "type": "emphasize", "target": "0" } },
+        { "at": 6.0, "action": { "type": "emphasize", "target": "1" } }
+      ]
+    },
+
+    {
+      "id": "s16-recommendations",
+      "section": "health",
+      "_note": "🆕 RANKED-LIST: An ordered list where items have visual weight — the #1 item is physically larger, bolder, maybe with a glow. Each item has an effort tag (low/med/high) and an impact bar. This communicates priority in a way that flat bullets can't.",
+      "primitive": {
+        "template": "ranked-list",
+        "content": {
+          "title": "Top 3 things to do next",
+          "items": [
+            {
+              "rank": 1,
+              "text": "Fix the webhook handlers — return errors so Stripe retries failed payments",
+              "effort": "low",
+              "impact": 0.95,
+              "tag": "data integrity"
+            },
+            {
+              "rank": 2,
+              "text": "Sanitize invoice notes — close the XSS vulnerability",
+              "effort": "low",
+              "impact": 0.9,
+              "tag": "security"
+            },
+            {
+              "rank": 3,
+              "text": "Extract and test calculateLineTotal() — 10 unit tests for the money math",
+              "effort": "medium",
+              "impact": 0.8,
+              "tag": "reliability"
+            }
+          ]
+        }
+      },
+      "narration": "Here's the hit list. Number one: fix the webhook handlers. Low effort, massive impact — you stop silently losing payment data. Number two: sanitize the invoice notes. Five-minute fix that closes a critical security hole. Number three: extract the line total calculation and write ten unit tests. This is your money math — proving it's correct is the highest-leverage test in the entire codebase.",
+      "holdSeconds": 12,
+      "beats": [
+        { "at": 2.0, "action": { "type": "emphasize", "target": "0" } },
+        { "at": 5.0, "action": { "type": "emphasize", "target": "1" } },
+        { "at": 8.0, "action": { "type": "emphasize", "target": "2" } }
+      ]
+    },
+
+    {
+      "id": "s17-verdict",
+      "section": "health",
+      "primitive": {
+        "template": "emphasis-word",
+        "content": {
+          "word": "HARDEN",
+          "subtitle": "A solid MVP that needs a security and reliability pass before handling real money at scale.",
+          "fx": [
+            { "name": "slam", "duration": 520 },
+            { "name": "glow", "duration": 1400, "strength": 40, "color": "#f59e0b" }
+          ],
+          "style": { "size": 120, "weight": "900", "color": "#f59e0b" }
+        }
+      },
+      "narration": "The final word: harden. This is a solid MVP built by someone who knows what they're doing. The three fixes we identified — webhooks, sanitization, and tested money math — would take a weekend and would transform this from a prototype into something you can trust with real client billing.",
+      "holdSeconds": 8
+    },
+
+    {
+      "id": "s18-reading-order",
+      "section": "health",
+      "_note": "Uses existing transform-grid but with a 'reading order' framing — files shown as a path to walk.",
+      "primitive": {
+        "template": "transform-grid",
+        "content": {
+          "title": "If you want to understand this codebase, read these files in this order",
+          "stages": [
+            { "label": "1. Data model", "display": { "type": "text", "text": "prisma/schema.prisma\nThe skeleton of the app" } },
+            { "label": "2. Auth", "display": { "type": "text", "text": "src/lib/auth.ts\nWho can log in" } },
+            { "label": "3. Schemas", "display": { "type": "text", "text": "src/lib/invoices/schemas.ts\nShape of the data" } },
+            { "label": "4. Create", "display": { "type": "text", "text": "src/lib/invoices/create.ts\nHow an invoice is born" } },
+            { "label": "5. Send", "display": { "type": "text", "text": "src/lib/invoices/send.ts\nHow it goes out the door" } },
+            { "label": "6. Webhooks", "display": { "type": "text", "text": "src/app/api/webhooks/stripe/route.ts\nHow money comes back" } }
+          ],
+          "staggerMs": 800,
+          "connector": "chevron"
+        }
+      },
+      "narration": "And if you want to dig into the code yourself, here's the reading order. Start with the Prisma schema — that's the skeleton. Then auth, to understand who can do what. Then the Zod schemas, then how invoices are created, how they're sent, and finally the webhook handler that closes the payment loop.",
+      "holdSeconds": 12
+    }
+  ]
+}

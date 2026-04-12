@@ -1,0 +1,326 @@
+{
+  "quickFacts": {
+    "repoUrl": "https://github.com/mikaldev/invoicely",
+    "languages": ["TypeScript", "CSS", "SQL"],
+    "framework": "Next.js 15 (App Router)",
+    "buildTool": "Turbopack",
+    "totalFiles": 147,
+    "totalLines": 11842,
+    "notableDependencies": [
+      { "name": "prisma", "purpose": "ORM for PostgreSQL — generates typed client from schema, handles migrations." },
+      { "name": "next-auth", "purpose": "Authentication framework — Google OAuth and magic link email login." },
+      { "name": "stripe", "purpose": "Payment processing — subscriptions, one-time invoices, webhook handling." },
+      { "name": "resend", "purpose": "Transactional email — sends invoices, receipts, and login links." },
+      { "name": "zod", "purpose": "Runtime schema validation — validates API inputs and webhook payloads." },
+      { "name": "react-pdf", "purpose": "Client-side PDF generation — renders invoices as downloadable PDFs." },
+      { "name": "date-fns", "purpose": "Date formatting and arithmetic — invoice due dates, recurring schedule calculation." },
+      { "name": "recharts", "purpose": "Dashboard charts — monthly revenue, outstanding invoices, client activity." },
+      { "name": "tailwindcss", "purpose": "Utility CSS framework — all styling." }
+    ]
+  },
+
+  "architecture": {
+    "summary": "Standard Next.js App Router monolith. Server Components for pages, Server Actions for mutations, API routes only for webhooks. Prisma talks to a single Postgres instance on Supabase. Stripe handles all payment state — the app mirrors it locally but Stripe is the source of truth.",
+
+    "entryPoints": [
+      { "file": "src/app/layout.tsx", "role": "Root layout — wraps everything in SessionProvider (next-auth) and ThemeProvider." },
+      { "file": "src/app/api/webhooks/stripe/route.ts", "role": "Stripe webhook receiver — processes payment events and updates local invoice status." },
+      { "file": "src/app/api/webhooks/resend/route.ts", "role": "Resend webhook receiver — tracks email delivery/bounce status." },
+      { "file": "src/app/api/auth/[...nextauth]/route.ts", "role": "NextAuth catch-all — Google OAuth + magic link providers." },
+      { "file": "src/app/(dashboard)/page.tsx", "role": "Dashboard home — shows revenue chart, overdue invoices, recent activity." }
+    ],
+
+    "modules": [
+      {
+        "name": "Authentication",
+        "path": "src/lib/auth.ts + src/app/api/auth/",
+        "responsibility": "Google OAuth and magic link login via NextAuth. Session management. Role-based access (owner vs. team member).",
+        "dependsOn": ["Data Layer"]
+      },
+      {
+        "name": "Invoice Engine",
+        "path": "src/lib/invoices/",
+        "responsibility": "Core business logic — creating, sending, voiding, and marking invoices as paid. Calculates line items, tax, discounts, due dates.",
+        "dependsOn": ["Data Layer", "Payment Processing", "Email Service"]
+      },
+      {
+        "name": "Recurring Scheduler",
+        "path": "src/lib/invoices/recurring.ts",
+        "responsibility": "Generates invoices on a schedule (weekly, monthly, quarterly). Runs via a Vercel Cron job that fires daily and checks what's due.",
+        "dependsOn": ["Invoice Engine", "Data Layer"]
+      },
+      {
+        "name": "Payment Processing",
+        "path": "src/lib/stripe/",
+        "responsibility": "Creates Stripe payment intents and checkout sessions. Processes webhooks to reconcile payment status. Manages subscription billing.",
+        "dependsOn": ["Data Layer"]
+      },
+      {
+        "name": "Email Service",
+        "path": "src/lib/email/",
+        "responsibility": "Sends invoices, payment confirmations, overdue reminders, and login links via Resend. Tracks delivery status via Resend webhooks.",
+        "dependsOn": ["Data Layer"]
+      },
+      {
+        "name": "PDF Generation",
+        "path": "src/lib/pdf/",
+        "responsibility": "Renders invoices as styled PDF documents. Runs client-side via react-pdf. Includes company logo, line items table, payment terms, and a 'Pay Now' link.",
+        "dependsOn": ["Invoice Engine"]
+      },
+      {
+        "name": "Dashboard & Reporting",
+        "path": "src/app/(dashboard)/",
+        "responsibility": "Server Components that query Prisma for revenue, outstanding invoices, client activity. Renders charts via recharts.",
+        "dependsOn": ["Data Layer"]
+      },
+      {
+        "name": "Data Layer",
+        "path": "src/lib/db/ + prisma/schema.prisma",
+        "responsibility": "Prisma client singleton, schema definition, seed script. Models: User, Organization, Client, Invoice, InvoiceItem, Payment, Subscription, EmailLog.",
+        "dependsOn": []
+      },
+      {
+        "name": "Client Management",
+        "path": "src/app/(dashboard)/clients/",
+        "responsibility": "CRUD for clients — companies or individuals who receive invoices. Tracks contact info, billing address, payment history.",
+        "dependsOn": ["Data Layer"]
+      }
+    ],
+
+    "dataFlow": [
+      {
+        "name": "Creating and sending an invoice",
+        "steps": [
+          { "actor": "User", "action": "Fills out the invoice form: client, line items, tax rate, due date, notes." },
+          { "actor": "Invoice Engine", "action": "Validates input via zod schema. Calculates subtotal, tax, total. Creates Invoice + InvoiceItem rows in Postgres.", "file": "src/lib/invoices/create.ts" },
+          { "actor": "Invoice Engine", "action": "Sets status to DRAFT. Returns the new invoice to the UI." },
+          { "actor": "User", "action": "Reviews the invoice preview. Clicks 'Send'." },
+          { "actor": "Invoice Engine", "action": "Transitions status from DRAFT to SENT. Creates a Stripe payment link for the invoice total.", "file": "src/lib/invoices/send.ts" },
+          { "actor": "Email Service", "action": "Sends the invoice email via Resend with the PDF attached and a 'Pay Now' button linking to Stripe Checkout.", "file": "src/lib/email/send-invoice.ts" },
+          { "actor": "Email Service", "action": "Creates an EmailLog row tracking delivery status." }
+        ]
+      },
+      {
+        "name": "Payment received via Stripe",
+        "steps": [
+          { "actor": "Client (external)", "action": "Clicks 'Pay Now' in the invoice email. Lands on Stripe Checkout. Pays." },
+          { "actor": "Stripe", "action": "Processes the payment. Fires a checkout.session.completed webhook." },
+          { "actor": "Webhook Handler", "action": "Receives the webhook. Verifies the Stripe signature. Extracts the invoice ID from metadata.", "file": "src/app/api/webhooks/stripe/route.ts" },
+          { "actor": "Payment Processing", "action": "Creates a Payment row linked to the Invoice. Updates Invoice status to PAID.", "file": "src/lib/stripe/handle-checkout.ts" },
+          { "actor": "Email Service", "action": "Sends a payment confirmation receipt to the client." },
+          { "actor": "Dashboard", "action": "Revenue chart and outstanding count update on next page load." }
+        ]
+      },
+      {
+        "name": "Recurring invoice generation",
+        "steps": [
+          { "actor": "Vercel Cron", "action": "Fires daily at 6am UTC. Hits /api/cron/recurring.", "file": "src/app/api/cron/recurring/route.ts" },
+          { "actor": "Recurring Scheduler", "action": "Queries all active Subscriptions where nextInvoiceDate <= today.", "file": "src/lib/invoices/recurring.ts" },
+          { "actor": "Recurring Scheduler", "action": "For each due subscription: clones the template invoice with updated dates and amounts." },
+          { "actor": "Invoice Engine", "action": "Creates the new Invoice rows. Sets status to SENT (auto-send enabled) or DRAFT (manual review)." },
+          { "actor": "Email Service", "action": "For auto-send invoices: sends immediately via Resend." },
+          { "actor": "Recurring Scheduler", "action": "Advances nextInvoiceDate by the subscription interval (e.g. +1 month)." }
+        ]
+      }
+    ],
+
+    "diagram": "User → Dashboard (Next.js Server Components)\n       ↓ Server Actions\n  Invoice Engine ←→ Data Layer (Prisma → Postgres)\n       ↓                    ↑\n  Stripe SDK ──webhook──→ Webhook Handler\n       ↓\n  Email (Resend) ──webhook──→ Email Status Handler\n       ↓\n  PDF (react-pdf, client-side)",
+
+    "externalIntegrations": [
+      { "name": "Stripe", "purpose": "Payment processing, subscription management, checkout sessions.", "credentialManagement": "STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET in .env.local. Not committed." },
+      { "name": "Resend", "purpose": "Transactional email delivery.", "credentialManagement": "RESEND_API_KEY in .env.local." },
+      { "name": "Google OAuth", "purpose": "Social login for users.", "credentialManagement": "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env.local." },
+      { "name": "Supabase (Postgres)", "purpose": "Primary database.", "credentialManagement": "DATABASE_URL in .env.local pointing to Supabase pooler." },
+      { "name": "Vercel Cron", "purpose": "Scheduled recurring invoice generation.", "credentialManagement": "Configured in vercel.json. Uses CRON_SECRET env var for auth." }
+    ]
+  },
+
+  "codeQuality": {
+    "overallGrade": "C",
+    "patterns": [
+      {
+        "name": "Input validation",
+        "assessment": "Zod schemas are defined for all Server Action inputs and webhook payloads. This is one of the strongest patterns in the codebase. Schemas are co-located with their handlers in src/lib/invoices/schemas.ts and src/lib/stripe/schemas.ts.",
+        "grade": "good"
+      },
+      {
+        "name": "Error handling",
+        "assessment": "Inconsistent. Server Actions use try/catch and return { error: string } objects — decent pattern. But the Stripe webhook handler (src/app/api/webhooks/stripe/route.ts) catches all errors and returns 200 OK regardless, which means Stripe thinks the webhook succeeded even when processing failed. Failed webhooks should return 4xx/5xx so Stripe retries. The Resend webhook handler has the same issue.",
+        "grade": "mixed"
+      },
+      {
+        "name": "Naming conventions",
+        "assessment": "Generally consistent. Files use kebab-case, components use PascalCase, functions use camelCase. One exception: src/lib/invoices/recurring.ts exports processRecurring() but the cron route calls it as runRecurringJob() via a re-export in src/lib/invoices/index.ts that renames it. Confusing.",
+        "grade": "mixed"
+      },
+      {
+        "name": "Testing",
+        "assessment": "Zero test files. No test runner configured. No CI. The Stripe webhook handler, the recurring scheduler, and the invoice calculation logic are all untested. These are the three highest-risk areas of the codebase.",
+        "grade": "poor"
+      },
+      {
+        "name": "Type safety",
+        "assessment": "TypeScript strict mode is ON. Prisma generates typed models. Zod schemas infer types. However, the Stripe webhook event body is cast to `any` in three places (src/lib/stripe/handle-checkout.ts lines 14, 28, 47) instead of using Stripe's typed event helpers.",
+        "grade": "mixed"
+      },
+      {
+        "name": "Database access patterns",
+        "assessment": "All Prisma calls happen inside src/lib/ service functions — never directly in components or routes. This is a clean separation. However, the dashboard page (src/app/(dashboard)/page.tsx) makes 6 separate Prisma queries in its Server Component body rather than aggregating them into a single service call. Each query is a separate round trip to Supabase.",
+        "grade": "mixed"
+      }
+    ],
+
+    "complexityHotspots": [
+      {
+        "file": "src/lib/invoices/recurring.ts",
+        "lineRange": "45-182",
+        "issue": "The processRecurring() function is 137 lines with 5 levels of nesting. It queries subscriptions, loops through them, clones invoices, handles date math, conditionally sends emails, and advances the schedule — all in one function with no extraction.",
+        "severity": "high",
+        "suggestion": "Extract into: findDueSubscriptions(), cloneInvoiceFromTemplate(), advanceSchedule(). Each becomes testable and the orchestrator reads as a pipeline."
+      },
+      {
+        "file": "src/app/api/webhooks/stripe/route.ts",
+        "lineRange": "1-94",
+        "issue": "Single 94-line POST handler with a switch statement over 8 Stripe event types. Each case does inline Prisma mutations. No delegation to service functions.",
+        "severity": "medium",
+        "suggestion": "Create a handler map: { 'checkout.session.completed': handleCheckout, 'invoice.paid': handleInvoicePaid, ... } in src/lib/stripe/webhook-handlers.ts. The route becomes a 10-line dispatcher."
+      },
+      {
+        "file": "src/lib/invoices/create.ts",
+        "lineRange": "67-112",
+        "issue": "Line item calculation loop manually computes quantity * unitPrice, then applies a percentage discount, then adds tax. The discount and tax logic is duplicated in src/lib/pdf/render-invoice.ts for PDF rendering.",
+        "severity": "medium",
+        "suggestion": "Extract calculateLineTotal(item, discount, taxRate) into a shared function. Both create.ts and render-invoice.ts import it. Single source of truth for money math."
+      }
+    ],
+
+    "techDebt": [
+      {
+        "description": "The Prisma schema has a 'notes' field on Invoice that is a plain string, but the UI renders it as markdown via dangerouslySetInnerHTML. No sanitization.",
+        "file": "src/app/(dashboard)/invoices/[id]/page.tsx",
+        "impact": "high"
+      },
+      {
+        "description": "Six TODO comments across the codebase, three of which say 'TODO: handle error' with no implementation.",
+        "file": "various",
+        "impact": "medium"
+      },
+      {
+        "description": "The seed script (prisma/seed.ts) creates test data with hardcoded Stripe customer IDs that don't exist in any real Stripe account. Running the seed and then triggering a webhook will crash.",
+        "file": "prisma/seed.ts",
+        "impact": "low"
+      },
+      {
+        "description": "date-fns is imported in 14 files but only 3 functions are used (format, addMonths, isBefore). The rest use native Date methods inconsistently.",
+        "file": "various",
+        "impact": "low"
+      }
+    ],
+
+    "securityConcerns": [
+      {
+        "description": "Invoice notes rendered via dangerouslySetInnerHTML without sanitization. A client name or note containing a script tag would execute in the dashboard.",
+        "file": "src/app/(dashboard)/invoices/[id]/page.tsx",
+        "severity": "critical",
+        "remediation": "Use a sanitization library (DOMPurify) or render notes as plain text. This is an XSS vector."
+      },
+      {
+        "description": "The /api/cron/recurring route checks for a CRON_SECRET header but uses a timing-unsafe string comparison (=== instead of crypto.timingSafeEqual).",
+        "file": "src/app/api/cron/recurring/route.ts",
+        "severity": "warning",
+        "remediation": "Use crypto.timingSafeEqual for secret comparison. Low practical risk but easy fix."
+      },
+      {
+        "description": "Stripe webhook signature verification is present and correct. Good.",
+        "file": "src/app/api/webhooks/stripe/route.ts",
+        "severity": "info",
+        "remediation": "No action needed — this is done right."
+      }
+    ],
+
+    "strengths": [
+      { "description": "Zod validation on every input boundary — Server Actions, webhooks, API routes. This is better than most production apps.", "file": "src/lib/invoices/schemas.ts" },
+      { "description": "Clean separation: all database access goes through service functions in src/lib/. Components never import Prisma directly.", "file": "src/lib/" },
+      { "description": "Stripe webhook signature verification is implemented correctly with the raw body buffer.", "file": "src/app/api/webhooks/stripe/route.ts" },
+      { "description": "The invoice PDF generation produces genuinely professional-looking output with proper formatting, alignment, and branding.", "file": "src/lib/pdf/render-invoice.ts" }
+    ]
+  },
+
+  "plainEnglish": {
+    "oneLiner": "Invoicely is a web app that lets freelancers and small businesses create, send, and track invoices, and get paid online through Stripe.",
+
+    "fullExplanation": "Imagine a freelance designer who does work for 15 different clients. Every month, they need to bill each client for the hours they worked. Invoicely is the tool they use to do that.\n\nThe designer logs in (with their Google account or a magic link sent to their email), sees a dashboard showing how much money came in this month, which invoices are still unpaid, and which clients are overdue. They click 'New Invoice,' pick a client, add line items ('Logo design — 8 hours × $150/hr'), set a due date, and hit Send.\n\nBehind the scenes, the app does several things at once. It saves the invoice in a database, creates a payment link through Stripe (the same payment system that Shopify and Lyft use), and sends an email to the client with a PDF of the invoice attached and a big blue 'Pay Now' button.\n\nWhen the client clicks 'Pay Now,' they land on a Stripe checkout page, enter their card, and pay. Stripe then sends a message back to Invoicely saying 'this invoice got paid.' The app updates the invoice status, sends a receipt to the client, and the designer sees the revenue show up on their dashboard.\n\nFor clients who get billed the same amount every month (like a retainer), the designer can set up a recurring invoice. The app has an automated scheduler that checks every morning: 'Are any recurring invoices due today?' If so, it creates a fresh invoice, optionally sends it automatically, and moves the next billing date forward by one month (or week, or quarter).",
+
+    "userJourneys": [
+      {
+        "name": "Creating and sending an invoice",
+        "narrative": "The user clicks 'New Invoice' from the dashboard. They pick a client from their saved list (or add a new one). They add line items — each one has a description, quantity, and unit price. The app calculates the subtotal, applies any discount, adds tax, and shows the total. The user can add notes at the bottom ('Payment due within 30 days'). They preview the invoice as it will appear in the PDF, then click 'Send.' The app emails the invoice to the client with a PDF attachment and a payment link. The invoice appears in the user's dashboard as 'Sent' with a yellow status badge."
+      },
+      {
+        "name": "Getting paid",
+        "narrative": "The client receives the invoice email and clicks 'Pay Now.' They're taken to a Stripe checkout page showing the invoice total. They enter their card and pay. Within seconds, the app receives a notification from Stripe, marks the invoice as 'Paid' (green badge on the dashboard), and sends a payment receipt to the client. The user sees the payment appear in their revenue chart and the 'Outstanding' count drops by one."
+      },
+      {
+        "name": "Managing recurring billing",
+        "narrative": "The user goes to a client's page and clicks 'Set up recurring invoice.' They choose a frequency (weekly, monthly, quarterly), a start date, and whether to auto-send or save as draft for review. Every morning at 6am, the app checks if any recurring invoices are due. If one is, it creates a new invoice with the current date and the next due date calculated from the frequency. If auto-send is on, the invoice goes out immediately. Otherwise it appears as a draft for the user to review."
+      }
+    ],
+
+    "analogies": [
+      { "concept": "Webhook", "analogy": "A webhook is like a doorbell. When something happens at Stripe (a payment goes through), Stripe rings Invoicely's doorbell — it sends a message to a specific URL. Invoicely answers the door, reads the message, and updates its records. Without the doorbell, Invoicely would have to keep calling Stripe every few seconds asking 'any payments yet?' — that's wasteful and slow." },
+      { "concept": "Server Components vs. Client Components", "analogy": "Think of the app as a restaurant. Server Components are the kitchen — they do the heavy work (database queries, calculations) before the plate reaches the table. Client Components are the dining room — they handle things the customer interacts with directly (buttons, forms, animations). The kitchen does its work once and sends out a finished plate. The dining room is interactive and responds in real time." },
+      { "concept": "Prisma ORM", "analogy": "Prisma is like a translator between the app and the database. The app speaks TypeScript; the database speaks SQL. Instead of writing raw SQL queries (which is like writing a letter in a foreign language), the developer writes TypeScript code and Prisma translates it into the right SQL. It also checks the translation at build time — if you try to ask for a column that doesn't exist, Prisma catches the mistake before the app runs." },
+      { "concept": "Stripe as source of truth", "analogy": "Invoicely keeps its own copy of payment records, but Stripe is the 'official scorekeeper.' If there's ever a disagreement about whether a payment happened, Stripe's record wins. It's like keeping your own notes at a meeting but knowing that the official minutes are what counts. The webhooks are how the official minutes get delivered to your notebook." },
+      { "concept": "Zod validation", "analogy": "Zod is a bouncer at the door. Before any data gets into the system — whether it's a user filling out a form or Stripe sending a webhook — Zod checks that the data looks right. Is the email actually an email? Is the amount a positive number? Is the due date in the future? If anything is wrong, Zod rejects it at the door before it can cause problems inside." },
+      { "concept": "Recurring invoice scheduler", "analogy": "The scheduler is like a mail carrier with a calendar. Every morning it checks: 'Do I have any deliveries due today?' It looks at all the recurring invoices, finds the ones whose next billing date is today or earlier, creates a fresh invoice for each one, and either delivers it immediately (auto-send) or leaves it in the outbox for the owner to review." }
+    ]
+  },
+
+  "health": {
+    "verdict": "Invoicely is a functional product that handles its core job — creating, sending, and tracking invoices — well enough to use in production for low-stakes freelance billing. The Zod validation layer and clean service separation show someone who cares about quality. But the complete absence of tests, the XSS vulnerability in invoice notes, and the webhook error-swallowing pattern mean it's one bad edge case away from losing data or money. It's a solid vibe-coded MVP that needs a hardening pass before handling serious volume.",
+
+    "topRisks": [
+      {
+        "risk": "Stripe webhook handler returns 200 on failure — failed payments silently drop.",
+        "consequence": "A client pays, but a bug in the handler means the invoice stays as 'Sent.' The freelancer thinks they haven't been paid. The client thinks they have. Reconciliation becomes manual and error-prone."
+      },
+      {
+        "risk": "XSS via unsanitized invoice notes (dangerouslySetInnerHTML).",
+        "consequence": "If a malicious string enters the notes field (even accidentally — some company names contain angle brackets), it could execute JavaScript in the dashboard. In a billing app, this could lead to session theft or data exfiltration."
+      },
+      {
+        "risk": "Zero test coverage on money calculation and recurring scheduling.",
+        "consequence": "A rounding error in line item calculation or a timezone bug in the recurring scheduler would silently generate wrong invoice amounts. With no tests, these bugs survive until a client complains."
+      }
+    ],
+
+    "topWins": [
+      {
+        "improvement": "Fix the webhook handlers: return 4xx/5xx on processing failure so Stripe retries.",
+        "impact": "Eliminates the silent-data-loss risk. Stripe will retry failed webhooks for up to 3 days, giving you time to fix bugs without losing payments.",
+        "effort": "low"
+      },
+      {
+        "improvement": "Sanitize invoice notes (replace dangerouslySetInnerHTML with DOMPurify or plain text rendering).",
+        "impact": "Closes the XSS vulnerability. Five-minute fix with massive security payoff.",
+        "effort": "low"
+      },
+      {
+        "improvement": "Extract calculateLineTotal() and write 10 unit tests for it covering rounding, zero quantities, negative discounts, and tax edge cases.",
+        "impact": "Creates a trusted foundation for money math. Every invoice amount flows through this function — getting it right (and proving it's right) is the highest-leverage test you can write.",
+        "effort": "medium"
+      }
+    ],
+
+    "readingOrder": [
+      { "file": "prisma/schema.prisma", "why": "Start here — the data model is the skeleton of the whole app. You'll see every entity and how they relate." },
+      { "file": "src/lib/auth.ts", "why": "Understand who can log in and what they can do. This shapes every page and action." },
+      { "file": "src/lib/invoices/schemas.ts", "why": "The Zod schemas define the shape of the core business data. Read these before the logic." },
+      { "file": "src/lib/invoices/create.ts", "why": "The heart of the app — how an invoice is born. Follow the calculation logic." },
+      { "file": "src/lib/invoices/send.ts", "why": "What happens when an invoice goes out the door — Stripe link creation and email dispatch." },
+      { "file": "src/app/api/webhooks/stripe/route.ts", "why": "The other half of the payment loop — how money flows back into the system." },
+      { "file": "src/lib/invoices/recurring.ts", "why": "The most complex single file. Read after you understand create.ts and send.ts." },
+      { "file": "src/app/(dashboard)/page.tsx", "why": "The dashboard ties it all together — see how the data surfaces to the user." }
+    ]
+  }
+}
