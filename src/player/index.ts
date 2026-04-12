@@ -1,6 +1,6 @@
 export { ScriptPlayer } from './ScriptPlayer';
 export type { PlayerState, ProgressInfo, ScriptPlayerEvents } from './ScriptPlayer';
-export { StubVoicePlayer } from './VoicePlayer';
-export type { VoicePlayer, SpeakHandle } from './VoicePlayer';
+export { StubVoicePlayer, WebSpeechVoicePlayer } from './VoicePlayer';
+export type { VoicePlayer, SpeakHandle, WebSpeechOptions } from './VoicePlayer';
 export * from './types';
 export { sampleScripts } from './samples';

@@ -5,9 +5,11 @@ import type { TemplateHandle } from './templates';
 import {
   ScriptPlayer,
   StubVoicePlayer,
+  WebSpeechVoicePlayer,
   sampleScripts,
   type PlayerState,
   type PresentationScript,
+  type VoicePlayer,
 } from './player';
 
 /**
@@ -40,6 +42,8 @@ export function App() {
     id: '',
   });
   const [loadedScript, setLoadedScript] = useState<keyof typeof sampleScripts | null>(null);
+  const [audioOn, setAudioOn] = useState(false);
+  const [wpm, setWpm] = useState(150);
 
   const handleReady = useCallback((presenter: Presenter) => {
     presenterRef.current = presenter;
@@ -66,7 +70,9 @@ export function App() {
     clearAll();
 
     const script: PresentationScript = sampleScripts[key];
-    const voice = new StubVoicePlayer();
+    const voice: VoicePlayer = audioOn
+      ? new WebSpeechVoicePlayer({ lang: 'en-US', wordsPerMinute: wpm })
+      : new StubVoicePlayer();
     const player = new ScriptPlayer(script, p, voice, {
       onSceneEnter: (scene, index) =>
         setScenePos({ index, total: script.scenes.length, id: scene.id }),
@@ -517,6 +523,25 @@ export function App() {
         </div>
         <div className="sb-toolbar-group">
           <span className="sb-toolbar-label">Script</span>
+          <button
+            disabled={!ready}
+            onClick={() => setAudioOn((v) => !v)}
+            title="Toggle between silent StubVoicePlayer and browser SpeechSynthesis. Takes effect on next load."
+          >
+            🔊 audio: {audioOn ? 'on' : 'off'}
+          </button>
+          <label className="sb-toolbar-label" title="Lower wpm = scenes hold longer to let slower voices finish.">
+            wpm
+            <input
+              type="number"
+              min={100}
+              max={260}
+              step={5}
+              value={wpm}
+              onChange={(e) => setWpm(Number(e.target.value))}
+              style={{ width: 64, marginLeft: 6 }}
+            />
+          </label>
           <button disabled={!ready} onClick={() => loadScript('quick')}>
             load: quick
           </button>
