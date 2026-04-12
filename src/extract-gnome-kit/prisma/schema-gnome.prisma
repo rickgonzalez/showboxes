@@ -1,0 +1,159 @@
+// ─────────────────────────────────────────────────────────────
+// schema-gnome.prisma — TRIMMED EXTRACT
+// ─────────────────────────────────────────────────────────────
+//
+// This file contains ONLY the Prisma models + enums needed to
+// support the Gnome / agent-definition concept. Lifted verbatim
+// from marymary's schema.prisma (the Project, Tactic, Task,
+// Document, MediaAsset, Execution etc. tables are NOT included —
+// the new project owns those concepts itself).
+//
+// PORTING NOTES (read before pasting into a new schema):
+//
+//  1. `projectId` / `organizationId` on Gnome are marymary's
+//     dual-scope pattern. In the new repo you almost certainly
+//     want a single parent scope — probably the "tool" or
+//     "workspace" the gnome lives under. Replace the two
+//     nullable FKs with one non-null FK to your parent model,
+//     or drop the scoping entirely if the gnome is global.
+//
+//  2. `categories TacticCategory[]` is marymary-specific. The
+//     enum is included below for reference. If the new project
+//     doesn't classify gnomes into categories, delete the field
+//     and the enum. If it does, replace the enum with whatever
+//     taxonomy the new project uses.
+//
+//  3. `externalAgentId` / `externalAgentVersion` /
+//     `externalAgentSyncedAt` / `externalAgentError` are the
+//     Managed Agents mirror fields. Keep these — they're what
+//     makes `syncGnomeToManagedAgent()` idempotent.
+//
+//  4. `ManagedAgentEnvironment` is a 1-row table that owns the
+//     remote Environment ID. Phase 1 marymary has exactly one
+//     row with slug "marymary-default". Rename the slug for
+//     the new project and seed it the same way.
+//
+//  5. `isBuiltIn` / `builtInSlug` track copy-on-write lineage
+//     for shipped defaults. If the new project only has ONE
+//     gnome, these are optional — but keeping them means you
+//     can later ship additional built-ins and let users fork
+//     them the same way marymary does.
+//
+//  6. `@@unique([projectId, slug])` — update the scope column
+//     name to match whatever parent you chose in (1).
+//
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// TacticCategory — marymary-specific taxonomy
+// Delete or replace for the new project.
+// ─────────────────────────────────────────────
+
+enum TacticCategory {
+  SOCIAL_MEDIA      // Twitter, Instagram, TikTok, YouTube
+  COMMUNITY         // Discord, Reddit, Forums
+  STORE_PRESENCE    // Steam, App Store, Play Store
+  CONTENT_MARKETING // Blog posts, newsletters, videos
+  PAID_ADS          // Google Ads, Meta Ads, etc.
+  PARTNERSHIPS      // Influencers, cross-promotions
+  SEO               // Search optimization
+  EMAIL             // Email campaigns, drip sequences
+  EVENTS            // Conventions, launches, webinars
+  OTHER
+}
+
+// ─────────────────────────────────────────────
+// GNOMES — user-customizable agent definitions
+// ─────────────────────────────────────────────
+
+model Gnome {
+  id        String @id @default(cuid())
+
+  // TODO(port): marymary uses dual-scope (project OR org). The new
+  // project probably wants a single parent — replace the two
+  // nullable FKs below with one non-null FK to your parent entity,
+  // or drop scoping entirely if the gnome is global.
+  projectId      String?
+  organizationId String?
+
+  // Identity
+  name        String
+  slug        String          // URL-safe identifier within parent scope
+  description String   @db.Text
+  icon        String?         // emoji or image path
+
+  // TODO(port): marymary-specific. Delete or replace with the new
+  // project's taxonomy.
+  categories TacticCategory[]
+
+  // LLM configuration
+  defaultModel     String   @default("claude-sonnet-4-20250514")
+  maxPlanTokens    Int      @default(2048)
+  maxExecuteTokens Int      @default(4096)
+  canAutoExecute   Boolean  @default(false)
+
+  // System prompt — Handlebars template, rendered with
+  // AgentContext at runtime. See agents/template.ts.
+  systemPromptTemplate String @db.Text
+
+  // Tool providers this gnome can use. Validated at the service
+  // layer against the ToolProviderType union.
+  toolProviders          String[]
+  // Work product types this gnome can produce (e.g. ["code-explanation"])
+  producibleWorkProducts String[]
+
+  // Built-in tracking — copy-on-write from code defaults.
+  isBuiltIn    Boolean  @default(false)   // true if this row is a user copy of a shipped default
+  builtInSlug  String?                    // canonical slug of the built-in this was cloned from
+
+  // Versioning
+  version      Int      @default(1)
+  lastEditedBy String?  // userId
+
+  // Managed Agents mirror. Populated by syncGnomeToManagedAgent()
+  // after every create/update. All nullable so existing rows and
+  // any legacy harness are unaffected. externalAgentError holds the
+  // last sync failure for later retry.
+  externalAgentId       String?
+  externalAgentVersion  Int?
+  externalAgentSyncedAt DateTime?
+  externalAgentError    String?  @db.Text
+
+  // TODO(port): wire these relations to whatever parent you chose.
+  // project      Project?      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, slug])
+  @@unique([organizationId, slug])
+  @@index([projectId, categories])
+  @@index([organizationId, categories])
+}
+
+// ─────────────────────────────────────────────
+// MANAGED AGENTS — Anthropic beta provisioning
+// ─────────────────────────────────────────────
+//
+// One row per logical Managed Agents Environment. Phase 1 marymary
+// only ever creates a single row with slug "marymary-default".
+// The seed script (scripts/seed-managed-agents.ts) ensures this
+// row exists by calling POST /v1/environments?beta=true.
+
+model ManagedAgentEnvironment {
+  id                    String   @id @default(cuid())
+  slug                  String   @unique  // e.g. "marymary-default" — rename per project
+  externalEnvironmentId String   @unique
+  description           String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
