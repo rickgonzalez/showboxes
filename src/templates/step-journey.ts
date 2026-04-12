@@ -182,7 +182,7 @@ export const stepJourneyTemplate: Template = {
     });
 
     wrapper.appendChild(row);
-    presenter.domLayer().appendChild(wrapper);
+    presenter.domRoot.appendChild(wrapper);
 
     // ── Stagger reveal ─────────────────────────────────────────────
     const timers: number[] = [];

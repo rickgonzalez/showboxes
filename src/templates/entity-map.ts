@@ -222,7 +222,7 @@ export const entityMapTemplate: Template = {
     container.appendChild(svg);
 
     wrapper.appendChild(container);
-    presenter.domLayer().appendChild(wrapper);
+    presenter.domRoot.appendChild(wrapper);
 
     // ── Draw relationship lines (after layout settles) ───────────
     const lineEls: SVGElement[] = [];

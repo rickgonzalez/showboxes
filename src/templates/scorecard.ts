@@ -197,7 +197,7 @@ export const scorecardTemplate: Template = {
     });
 
     wrapper.appendChild(grid);
-    presenter.domLayer().appendChild(wrapper);
+    presenter.domRoot.appendChild(wrapper);
 
     // ── Handle ─────────────────────────────────────────────────
     return {

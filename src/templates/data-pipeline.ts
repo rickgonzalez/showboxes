@@ -329,7 +329,7 @@ export const dataPipelineTemplate: Template = {
     });
 
     wrapper.appendChild(column);
-    presenter.domLayer().appendChild(wrapper);
+    presenter.domRoot.appendChild(wrapper);
 
     // ── Stagger reveal ─────────────────────────────────────────
     const timers: number[] = [];
