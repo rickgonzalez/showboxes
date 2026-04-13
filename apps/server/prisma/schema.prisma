@@ -1,0 +1,69 @@
+// Showboxes server schema — minimum viable for v1 (public repos, no auth).
+// Clerk users, orgs, private-repo vaults come later.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// One row per analyze invocation. If a user re-analyzes the same repo,
+// we create a new row — the player's cache in localStorage decides
+// whether to surface the old one or call for a fresh run.
+model Analysis {
+  id        String    @id @default(cuid())
+  repoUrl   String
+  commitSha String?
+  // Managed Agents session that produced (or is producing) this analysis.
+  sessionId String?   @unique
+  status    String    // 'running' | 'ready' | 'error'
+  // Content-addressed fingerprint of the Agent 1 definition (model +
+  // system prompt) that produced this row. Lets the UI tell runs apart
+  // when the agent is being iterated on.
+  agentVersion String?
+  // The AnalysisJSON produced by submit_code_analysis. Null until status='ready'.
+  data      Json?
+  error     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([repoUrl])
+  @@index([status])
+}
+
+// One row per Managed Agents environment we provision. Typically just
+// one environment per deployment (dev / staging / prod), seeded on first
+// boot. The gnome's externalId is stored per-agent elsewhere — this
+// table only tracks the environment.
+model ManagedAgentEnvironment {
+  id         String   @id @default(cuid())
+  // The id returned by Anthropic when we provision the environment.
+  externalId String   @unique
+  name       String
+  createdAt  DateTime @default(now())
+}
+
+// One row per gnome we sync to Managed Agents. Mirrors the extract-gnome-kit
+// pattern at a minimum. For v1 we have exactly one gnome ("code-analysis-gnome"),
+// but keeping the table polymorphic makes it trivial to add the Producer
+// gnome (Agent 2) later without migrations.
+model Gnome {
+  id                  String   @id @default(cuid())
+  slug                String   @unique
+  name                String
+  description         String
+  defaultModel        String
+  // Pre-rendered system prompt template (Handlebars). Stored so edits
+  // survive deploys without re-shipping code.
+  systemPromptTemplate String   @db.Text
+  // External Managed Agent id returned by the provisioning call. Null
+  // until first sync succeeds.
+  externalAgentId     String?
+  // Version of the external agent, bumped on every sync.
+  externalAgentVersion Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}

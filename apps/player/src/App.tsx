@@ -11,6 +11,7 @@ import {
   type PresentationScript,
   type VoicePlayer,
 } from './player';
+import { PipelinePanel } from './pipeline/PipelinePanel';
 
 /**
  * Demo host for the showboxes service layer. This page is the human-facing
@@ -41,7 +42,7 @@ export function App() {
     total: 0,
     id: '',
   });
-  const [loadedScript, setLoadedScript] = useState<keyof typeof sampleScripts | null>(null);
+  const [loadedScript, setLoadedScript] = useState<string | null>(null);
   const [audioOn, setAudioOn] = useState(false);
   const [wpm, setWpm] = useState(150);
 
@@ -63,24 +64,30 @@ export function App() {
     setPlayerState('idle');
   };
 
-  const loadScript = (key: keyof typeof sampleScripts) => {
-    const p = presenterRef.current;
-    if (!p) return;
-    teardownPlayer();
-    clearAll();
+  const loadScriptObject = useCallback(
+    (script: PresentationScript, label: string) => {
+      const p = presenterRef.current;
+      if (!p) return;
+      teardownPlayer();
+      clearAll();
 
-    const script: PresentationScript = sampleScripts[key];
-    const voice: VoicePlayer = audioOn
-      ? new WebSpeechVoicePlayer({ lang: 'en-US', wordsPerMinute: wpm })
-      : new StubVoicePlayer();
-    const player = new ScriptPlayer(script, p, voice, {
-      onSceneEnter: (scene, index) =>
-        setScenePos({ index, total: script.scenes.length, id: scene.id }),
-      onStateChange: setPlayerState,
-    });
-    playerRef.current = player;
-    setLoadedScript(key);
-    setScenePos({ index: 0, total: script.scenes.length, id: script.scenes[0]?.id ?? '' });
+      const voice: VoicePlayer = audioOn
+        ? new WebSpeechVoicePlayer({ lang: 'en-US', wordsPerMinute: wpm })
+        : new StubVoicePlayer();
+      const player = new ScriptPlayer(script, p, voice, {
+        onSceneEnter: (scene, index) =>
+          setScenePos({ index, total: script.scenes.length, id: scene.id }),
+        onStateChange: setPlayerState,
+      });
+      playerRef.current = player;
+      setLoadedScript(label);
+      setScenePos({ index: 0, total: script.scenes.length, id: script.scenes[0]?.id ?? '' });
+    },
+    [audioOn, wpm],
+  );
+
+  const loadScript = (key: keyof typeof sampleScripts) => {
+    loadScriptObject(sampleScripts[key], key);
   };
 
   const playerPlay = () => playerRef.current?.play();
@@ -577,6 +584,10 @@ export function App() {
           <button disabled={!ready} onClick={clearAll}>clear</button>
         </div>
       </header>
+      <PipelinePanel
+        canPlay={ready}
+        onPlayScript={(s) => loadScriptObject(s, 'pipeline')}
+      />
       <main className="sb-stage-host">
         <Presentation onReady={handleReady} />
       </main>

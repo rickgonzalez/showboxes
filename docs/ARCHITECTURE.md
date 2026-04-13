@@ -733,3 +733,14 @@ This sidesteps the vault system entirely. The tradeoff: you're loading the codeb
 2. **Voice provider integration.** ElevenLabs has a streaming API and a pre-generation API. Kokoro is open-source and could run locally or on a GPU endpoint. The pre-generation choice simplifies this — generate all scene audio as individual clips, stitch or play sequentially.
 
 3. **Script Player sync precision.** With pre-generated audio, the Player needs to know each clip's duration to schedule beats accurately. Either embed duration in the script (Agent 2 estimates) or measure actual audio duration after generation and adjust beat timings.
+
+4. **Deep-dive runs longer than overview.** Agent 1 is now split into Agent 1a (triage — Haiku, tree+manifests only, ~30s) and Agent 1b (deep analysis — Sonnet, scoped by user-chosen mode). The four modes are `overview`, `deep-dive`, `scorecard`, and `walkthrough`, selected via a modal after triage completes. First testing (2026-04-13) showed **deep-dive on 2 subsystems running longer than a full overview**, which is the inverse of what we'd expect from a scoped mode.
+
+   **Cause:** the mode directives live in `apps/server/lib/agents/render-prompt.ts` (`renderModeDirective`). Overview has a hard ~30-file cap. Deep-dive has no file cap — the agent traces imports across subsystem boundaries (auth pulls in db, config, middleware, shared utils) and the prompt actively encourages "detailed findings," which fills the 32k output budget.
+
+   **Planned tweaks (deferred):**
+   - Soft file budget per deep-dive subsystem (~40 files), with guidance to prefer files the subsystem owns outright over imported utilities.
+   - Tighter "cover other areas briefly" instruction so the non-focused portion doesn't quietly expand.
+   - Consider a lower `maxExecuteTokens` for deep-dive than for full analysis.
+
+   All three tweaks are localized to `renderModeDirective` — no schema or UI changes needed.

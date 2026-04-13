@@ -786,3 +786,424 @@ button:disabled {
   right: 0;
   pointer-events: none;
 }
+
+/* ---------- Pipeline panel ---------- */
+
+.sb-pipeline {
+  position: relative;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.sb-pipeline-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  flex-wrap: wrap;
+}
+
+.sb-pipeline-sep {
+  width: 1px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 4px;
+}
+
+.sb-pipeline-url {
+  flex: 1;
+  min-width: 240px;
+  font: inherit;
+  color: inherit;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+.sb-pipeline-url:focus {
+  outline: none;
+  border-color: rgba(96, 165, 250, 0.6);
+}
+
+.sb-pipeline-versions {
+  font: inherit;
+  color: inherit;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 6px 8px;
+  border-radius: 8px;
+  max-width: 260px;
+}
+
+.sb-pipeline-versions:disabled {
+  opacity: 0.5;
+}
+
+.sb-pipeline-tab-active {
+  background: rgba(96, 165, 250, 0.2) !important;
+  border-color: rgba(96, 165, 250, 0.6) !important;
+}
+
+.sb-pipeline-error {
+  margin: 0 20px 10px;
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+/* The drawer overlays the stage — it doesn't reflow the page. */
+.sb-pipeline-drawer {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  padding: 14px 20px 18px;
+  background: rgba(11, 16, 32, 0.96);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  z-index: 20;
+  max-height: calc(100vh - 160px);
+  overflow: auto;
+}
+
+.sb-pipeline-settings {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.sb-pipeline-settings label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.75;
+}
+
+.sb-pipeline-settings select,
+.sb-pipeline-settings input[type='range'] {
+  font: inherit;
+  color: inherit;
+}
+
+.sb-pipeline-settings select {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+
+/* ---------- JsonView ---------- */
+
+.sb-json-view {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sb-json-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sb-json-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.6;
+}
+
+.sb-json-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.sb-json-actions button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.sb-json-pre,
+.sb-json-editor {
+  margin: 0;
+  padding: 10px 12px;
+  background: #0b1020;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  font-family: 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #cbd5e1;
+  overflow: auto;
+  white-space: pre;
+}
+
+.sb-json-editor {
+  width: 100%;
+  resize: vertical;
+  white-space: pre;
+  tab-size: 2;
+}
+
+.sb-json-editor:focus {
+  outline: none;
+  border-color: rgba(96, 165, 250, 0.6);
+}
+
+.sb-json-error {
+  padding: 6px 10px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+/* ── Triage Modal ───────────────────────────────────────────── */
+
+.sb-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+
+.sb-modal {
+  background: #0f172a;
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  width: min(780px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  font-size: 13px;
+}
+
+.sb-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sb-modal-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.sb-modal-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 22px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.sb-modal-close:hover {
+  color: #f1f5f9;
+}
+
+.sb-modal-summary {
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.sb-modal-summary-row {
+  margin-bottom: 4px;
+}
+
+.sb-modal-summary-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.sb-modal-highlights {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: #cbd5e1;
+}
+
+.sb-modal-notes {
+  margin-top: 6px;
+  color: #fbbf24;
+  font-size: 12px;
+}
+
+.sb-modal-section {
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.sb-modal-section-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  margin-bottom: 10px;
+}
+
+.sb-modal-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.sb-modal-mode {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 12px 14px;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 120ms, background 120ms;
+}
+
+.sb-modal-mode:hover {
+  border-color: rgba(96, 165, 250, 0.4);
+}
+
+.sb-modal-mode-selected {
+  border-color: rgba(96, 165, 250, 0.8);
+  background: rgba(96, 165, 250, 0.08);
+}
+
+.sb-modal-mode-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.sb-modal-mode-hint {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.sb-modal-subsystems {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.sb-modal-subsystem {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  cursor: pointer;
+  align-items: flex-start;
+}
+
+.sb-modal-subsystem:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.sb-modal-subsystem-picked {
+  border-color: rgba(96, 165, 250, 0.6);
+  background: rgba(96, 165, 250, 0.06);
+}
+
+.sb-modal-subsystem-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.sb-modal-subsystem-name {
+  font-weight: 600;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.sb-modal-subsystem-weight {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 400;
+}
+
+.sb-modal-subsystem-purpose {
+  color: #cbd5e1;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.sb-modal-subsystem-paths {
+  color: #64748b;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', Menlo, Consolas, monospace;
+  margin-top: 2px;
+}
+
+.sb-modal-select {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: inherit;
+  font-size: 13px;
+}
+
+.sb-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+}
+
+.sb-modal-footer button {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: inherit;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.sb-modal-footer button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sb-modal-primary {
+  background: rgba(96, 165, 250, 0.2) !important;
+  border-color: rgba(96, 165, 250, 0.6) !important;
+  color: #f1f5f9 !important;
+}
+
+.sb-modal-primary:hover:not(:disabled) {
+  background: rgba(96, 165, 250, 0.3) !important;
+}

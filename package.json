@@ -1,0 +1,16 @@
+{
+  "name": "showboxes",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Showboxes monorepo — player (Vite) + server (Next.js) + shared types.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:player": "npm run -w @showboxes/player dev",
+    "dev:server": "npm run -w @showboxes/server dev",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}

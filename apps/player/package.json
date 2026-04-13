@@ -1,9 +1,9 @@
 {
-  "name": "showboxes",
+  "name": "@showboxes/player",
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "description": "Agent-driven presentation tool: canvas text boxes, 2D/3D shapes, and composable effects.",
+  "description": "Showboxes player — Vite + React runtime that plays PresentationScripts.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -11,6 +11,7 @@
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@showboxes/shared-types": "*",
     "@types/three": "^0.183.1",
     "animejs": "^3.2.2",
     "prismjs": "^1.29.0",

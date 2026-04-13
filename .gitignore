@@ -4,6 +4,13 @@ dist-ssr
 *.local
 .vite
 *.tsbuildinfo
+.next
+.turbo
+
+# Env
+.env
+.env.local
+.env*.local
 
 # Editors
 .vscode/*
