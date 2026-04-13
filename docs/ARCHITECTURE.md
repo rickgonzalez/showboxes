@@ -726,6 +726,68 @@ This sidesteps the vault system entirely. The tradeoff: you're loading the codeb
 
 ---
 
+## Agent 2 Implementation (2026-04-13)
+
+### Decision: No Handlebars for Agent 2
+
+Agent 1 uses Handlebars to render its system prompt because the prompt changes structurally per run — optional `{{#if focusAreas}}` blocks, mode directives injected by `renderModeDirective()`, etc. That's a good fit for template compilation.
+
+Agent 2 is different. Its system prompt is **static** — the same every time. The variability lives in the **user message**, where structured data (settings, analysis JSON) is handed to the model for it to reason over. A `detailLevel: 0.3` doesn't trigger a different prompt branch; the model reads the number, reads the guidelines in the system prompt, and decides how many scenes to produce. This is exactly the kind of nuanced interpretation LLMs are good at, and it would be awkward to pre-render with conditionals.
+
+### Architecture: Three-File Separation
+
+The Agent 2 implementation lives in `apps/server/lib/agents/` as four files:
+
+```
+producer.system-prompt.ts   — Static system prompt (exported string constant)
+producer.message.ts         — buildProducerUserMessage() assembles the user turn
+producer.tool-schema.ts     — submit_presentation_script tool definition (JSON Schema)
+producer.client.ts          — produceScript() wraps the Messages API call
+```
+
+**System prompt** (`PRODUCER_SYSTEM_PROMPT`): ~4K tokens. Contains:
+- Role description and pipeline overview
+- Creative principles: how to interpret audienceLevel, detailLevel, pace, persona
+- Narration guidelines (write for spoken audio, no markdown)
+- Beat choreography guidance (2–4 per scene, sync with narration)
+- holdSeconds estimation formula (~150 words/min, scaled by pace)
+- Scene flow arc (quickFacts → plainEnglish → architecture → codeQuality → health)
+- **Full visual primitives catalog** with every template's slot schema
+- Available canvas effects (EffectSpec)
+- Palette and scene count guidelines
+- Hard constraints (only use real template names, cover critical security findings, etc.)
+
+This prompt is the only place that needs updating when new templates are added.
+
+**User message** (`buildProducerUserMessage()`): Three sections:
+1. **Analysis JSON** — the full AnalysisJSON from Agent 1, fenced as a JSON code block
+2. **Settings** — each slider value annotated with an inline hint (e.g. `audienceLevel: 0.2 (non-technical — use analogies, avoid jargon)`) so the model sees both the number and the human-readable calibration
+3. **Focus instructions** — optional free text, e.g. "emphasize security findings" or "keep it under 2 minutes"
+
+The inline hint functions (`audienceHint`, `detailHint`, `paceHint`) do the job Handlebars conditionals would have done, but they annotate the data rather than restructuring the prompt.
+
+**Tool schema** (`SUBMIT_PRESENTATION_SCRIPT_TOOL`): Forces structured output via `tool_choice: { type: 'tool', name: 'submit_presentation_script' }`. Template names are locked down via an enum in the schema — the model cannot invent templates that don't exist. Beat action types are enumerated too. The schema mirrors the shared `PresentationScript` TypeScript type.
+
+**Client** (`produceScript()`): Single Messages API round-trip. Extracts the `tool_use` block, runs sanity checks (has title, has scenes), returns typed `ProduceScriptResult` with usage stats. Custom `ProducerError` class with codes: `NO_TOOL_CALL`, `WRONG_TOOL`, `INVALID_SCRIPT`, `API_ERROR`.
+
+### Route: `/api/script`
+
+Updated to call `produceScript()` when `ANTHROPIC_API_KEY` is set. Falls back to the fixture script when it's not (so local dev works without a key). Merges incoming settings with `defaultSettings` so partial overrides work (e.g. only changing `pace` without resending the whole settings object). Returns `_usage` alongside the script for token cost visibility during dev.
+
+### Why This is Better Than Handlebars for Agent 2
+
+| Concern | Handlebars approach | Current approach |
+|---------|-------------------|------------------|
+| Adding a new persona | Add conditional blocks to the template | Add a paragraph to the static system prompt |
+| Adding a new slider | Add `{{#if newSlider}}` blocks | Add a hint function, model reads the value |
+| Tweaking scene count for a detail level | Edit conditional ranges in the template | Edit the guidelines paragraph in the system prompt |
+| Adding a new template | Update the template catalog in the Handlebars source | Update the catalog in the system prompt + add the enum value to the tool schema |
+| Debugging what the model saw | Render the template, inspect the output | Read the static prompt + the assembled user message (both are plain strings) |
+
+The system prompt is essentially the "creative brief" for the director. It changes when the product changes (new templates, new persona, new effect), not when the user changes their settings.
+
+---
+
 ## Remaining Open Questions
 
 1. **Vercel function timeout.** Agent 1 can run 60-120 seconds. Vercel's default serverless timeout is 10s (Hobby) / 60s (Pro) / 900s (Enterprise). May need Vercel's background functions, or an async pattern where the client polls for completion.

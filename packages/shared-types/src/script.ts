@@ -63,6 +63,44 @@ export interface Scene {
   beats?: Beat[];
 }
 
+export type ScriptStatus = 'ready' | 'error';
+
+/**
+ * Persisted wrapper around a generated script. Scripts are stored
+ * independently of their source analysis so a user can re-run ones
+ * that work. `analysisId` is advisory — it records which analysis
+ * produced this script, but the script remains loadable even if that
+ * analysis row is later deleted.
+ */
+export interface ScriptRecord {
+  id: string;
+  analysisId: string | null;
+  repoUrl: string;
+  commitSha: string | null;
+  label: string;
+  persona: string;
+  status: ScriptStatus;
+  data: PresentationScript | null;
+  focusInstructions: string | null;
+  producerModel: string | null;
+  usage: { inputTokens: number; outputTokens: number } | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Lightweight list entry for the scripts dropdown. Omits `data`. */
+export interface ScriptSummary {
+  id: string;
+  analysisId: string | null;
+  repoUrl: string;
+  label: string;
+  persona: string;
+  status: ScriptStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PresentationScript {
   meta: {
     title: string;

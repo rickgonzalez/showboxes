@@ -38,7 +38,7 @@ export interface ProduceScriptResult {
   };
 }
 
-const DEFAULT_MODEL = 'claude-sonnet-4-5-20250514';
+const DEFAULT_MODEL = 'claude-sonnet-4-5';
 
 /**
  * Call the Messages API to produce a PresentationScript.

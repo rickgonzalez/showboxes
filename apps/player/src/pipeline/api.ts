@@ -4,9 +4,19 @@ import type {
   AnalysisRecord,
   AnalysisSummary,
   PresentationScript,
+  ScriptRecord,
+  ScriptSummary,
   TriageReport,
   UserSettings,
 } from '@showboxes/shared-types';
+
+export interface SavedScriptResult {
+  script: PresentationScript;
+  /** Server-assigned id of the persisted Script row (null if save failed). */
+  id: string | null;
+  /** Auto-derived label shown in the dropdown. */
+  label: string | null;
+}
 
 /**
  * Base URL for the server API. In dev, set VITE_SERVER_URL to
@@ -120,16 +130,55 @@ export async function listAnalyses(
 export async function postScript(
   analysis: AnalysisJSON,
   settings: UserSettings,
-): Promise<PresentationScript> {
+  analysisId?: string,
+): Promise<SavedScriptResult> {
   const res = await fetch(api('/api/script'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ analysis, settings }),
+    body: JSON.stringify({ analysis, settings, analysisId }),
   });
   if (!res.ok) {
     throw new Error(`script failed: ${res.status} ${await res.text()}`);
   }
-  return (await res.json()) as PresentationScript;
+  const body = (await res.json()) as PresentationScript & {
+    _id?: string | null;
+    _label?: string | null;
+  };
+  const { _id, _label, ...rest } = body;
+  return {
+    script: rest as PresentationScript,
+    id: _id ?? null,
+    label: _label ?? null,
+  };
+}
+
+/**
+ * List saved scripts, newest first. Pass `analysisId` to scope to a
+ * specific analysis run, or `repoUrl` to span all analyses of a repo.
+ */
+export async function listScripts(opts: {
+  analysisId?: string;
+  repoUrl?: string;
+} = {}): Promise<ScriptSummary[]> {
+  const params = new URLSearchParams();
+  if (opts.analysisId) params.set('analysisId', opts.analysisId);
+  if (opts.repoUrl) params.set('repoUrl', opts.repoUrl);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  const res = await fetch(api(`/api/scripts${qs}`));
+  if (!res.ok) {
+    throw new Error(`list scripts failed: ${res.status} ${await res.text()}`);
+  }
+  const body = (await res.json()) as { scripts: ScriptSummary[] };
+  return body.scripts;
+}
+
+/** Fetch the full saved Script record (includes the script `data` blob). */
+export async function getScript(id: string): Promise<ScriptRecord> {
+  const res = await fetch(api(`/api/scripts/${id}`));
+  if (!res.ok) {
+    throw new Error(`get script failed: ${res.status} ${await res.text()}`);
+  }
+  return (await res.json()) as ScriptRecord;
 }
 
 function sleep(ms: number): Promise<void> {

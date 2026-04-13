@@ -34,6 +34,35 @@ model Analysis {
   @@index([status])
 }
 
+// One row per successfully generated presentation script. Scripts are
+// independent of Analysis — they survive analysis deletion and can be
+// replayed on their own. `analysisId` is an advisory pointer back to
+// the analysis they were derived from, not a FK/relation, so deleting
+// an analysis never cascades into scripts. The repo URL and persona
+// are denormalized so the listing dropdown can filter and label
+// without a join.
+model Script {
+  id                String   @id @default(cuid())
+  analysisId        String?
+  repoUrl           String
+  commitSha         String?
+  label             String
+  persona           String
+  status            String   // 'ready' | 'error'
+  data              Json     // PresentationScript
+  settings          Json     // UserSettings used for generation
+  focusInstructions String?
+  producerModel     String?
+  usage             Json?    // { inputTokens, outputTokens }
+  error             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([repoUrl])
+  @@index([analysisId])
+  @@index([createdAt])
+}
+
 // One row per Managed Agents environment we provision. Typically just
 // one environment per deployment (dev / staging / prod), seeded on first
 // boot. The gnome's externalId is stored per-agent elsewhere — this

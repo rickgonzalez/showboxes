@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import type { PresentationScript } from '@showboxes/shared-types';
 import { defaultSettings } from '@showboxes/shared-types';
+import { prisma } from '@/lib/prisma';
 import { produceScript, ProducerError } from '../../../lib/agents/producer.client';
 
 /**
@@ -33,7 +34,13 @@ const bodySchema = z.object({
   focusInstructions: z.string().optional(),
   /** Pass model override for testing (e.g. "claude-haiku-4-5-20251001") */
   model: z.string().optional(),
+  /** Advisory link back to the Analysis row this script was derived from. */
+  analysisId: z.string().optional(),
 });
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204 });
+}
 
 export async function POST(req: Request) {
   let parsed: z.infer<typeof bodySchema>;
@@ -72,9 +79,41 @@ export async function POST(req: Request) {
       model: parsed.model,
     });
 
+    // Persist independently of the Analysis row — scripts survive
+    // analysis deletion, and the `analysisId` column is advisory only.
+    const repoUrl =
+      result.script.meta.repoUrl ?? analysis?.quickFacts?.repoUrl ?? 'unknown-repo';
+    const label = `${result.script.meta.persona} · ${new Date()
+      .toISOString()
+      .replace('T', ' ')
+      .slice(0, 16)}`;
+
+    let saved: { id: string } | null = null;
+    try {
+      saved = await prisma.script.create({
+        data: {
+          analysisId: parsed.analysisId ?? null,
+          repoUrl,
+          label,
+          persona: result.script.meta.persona,
+          status: 'ready',
+          data: result.script as unknown as object,
+          settings: settings as unknown as object,
+          focusInstructions: parsed.focusInstructions ?? null,
+          producerModel: parsed.model ?? null,
+          usage: result.usage as unknown as object,
+        },
+        select: { id: true },
+      });
+    } catch (dbErr) {
+      console.warn('[/api/script] failed to persist script:', dbErr);
+    }
+
     return NextResponse.json({
       ...result.script,
       _usage: result.usage,
+      _id: saved?.id ?? null,
+      _label: saved ? label : null,
     });
   } catch (e) {
     if (e instanceof ProducerError) {

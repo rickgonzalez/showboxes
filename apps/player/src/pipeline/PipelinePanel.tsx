@@ -3,11 +3,14 @@ import type {
   AnalysisMode,
   AnalysisSummary,
   PresentationScript,
+  ScriptSummary,
   TriageReport,
 } from '@showboxes/shared-types';
 import {
   getAnalysis,
+  getScript,
   listAnalyses,
+  listScripts,
   pollAnalysis,
   postScript,
   runTriage,
@@ -38,6 +41,8 @@ export function PipelinePanel({ onPlayScript, canPlay }: PipelinePanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [versions, setVersions] = useState<AnalysisSummary[]>([]);
   const [script, setScript] = useState<PresentationScript | null>(null);
+  const [selectedScriptId, setSelectedScriptId] = useState<string | null>(null);
+  const [savedScripts, setSavedScripts] = useState<ScriptSummary[]>([]);
   const [settings, setSettings] = useState<UserSettings>(defaultSettings);
   const [stage, setStage] = useState<Stage>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +85,58 @@ export function PipelinePanel({ onPlayScript, canPlay }: PipelinePanelProps) {
     };
   }, [repoUrl]);
 
+  // Refresh the saved-scripts dropdown whenever the selected analysis
+  // changes. Scripts are scoped to the currently selected analysis.
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedId) {
+      setSavedScripts([]);
+      setSelectedScriptId(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+    listScripts({ analysisId: selectedId })
+      .then((list) => {
+        if (cancelled) return;
+        setSavedScripts(list);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        console.warn('listScripts failed', e);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
+
+  const refreshScripts = async () => {
+    if (!selectedId) return;
+    try {
+      const list = await listScripts({ analysisId: selectedId });
+      setSavedScripts(list);
+    } catch (e) {
+      console.warn('listScripts failed', e);
+    }
+  };
+
+  const selectScript = async (id: string) => {
+    setError(null);
+    setSelectedScriptId(id);
+    try {
+      const record = await getScript(id);
+      if (record.status !== 'ready' || !record.data) {
+        setScript(null);
+        setError(record.error ?? `script is ${record.status}`);
+        return;
+      }
+      setScript(record.data);
+      setTab('script');
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
   const refreshVersions = async () => {
     try {
       const list = await listAnalyses(repoUrl);
@@ -93,6 +150,7 @@ export function PipelinePanel({ onPlayScript, canPlay }: PipelinePanelProps) {
     setError(null);
     setSelectedId(id);
     setScript(null);
+    setSelectedScriptId(null);
 
     // If the user picked a version while browsing all repos (empty
     // repoUrl), populate the URL field so the rest of the UI knows
@@ -183,9 +241,11 @@ export function PipelinePanel({ onPlayScript, canPlay }: PipelinePanelProps) {
     setError(null);
     setStage('scripting');
     try {
-      const result = await postScript(analysis, settings);
-      setScript(result);
+      const result = await postScript(analysis, settings, selectedId ?? undefined);
+      setScript(result.script);
+      setSelectedScriptId(result.id);
       setTab('script');
+      if (result.id) void refreshScripts();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -263,6 +323,29 @@ export function PipelinePanel({ onPlayScript, canPlay }: PipelinePanelProps) {
         <button onClick={runScript} disabled={!analysis || stage === 'scripting'}>
           {stage === 'scripting' ? 'generating…' : 'generate script'}
         </button>
+        <select
+          className="sb-pipeline-versions"
+          value={selectedScriptId ?? ''}
+          onChange={(e) => {
+            const id = e.target.value;
+            if (id) void selectScript(id);
+          }}
+          disabled={!selectedId || savedScripts.length === 0}
+          title="Saved scripts for this analysis"
+        >
+          <option value="" disabled>
+            {!selectedId
+              ? 'pick an analysis first'
+              : savedScripts.length === 0
+                ? 'no saved scripts'
+                : `${savedScripts.length} script${savedScripts.length === 1 ? '' : 's'}`}
+          </option>
+          {savedScripts.map((s) => (
+            <option key={s.id} value={s.id}>
+              {formatScriptLabel(s)}
+            </option>
+          ))}
+        </select>
         <button onClick={play} disabled={!script || !canPlay}>
           ▶ load into player
         </button>
@@ -342,6 +425,19 @@ function formatVersionLabel(
   const agent = v.agentVersion ? ` · agent ${v.agentVersion.slice(0, 7)}` : '';
   const status = v.status === 'ready' ? '' : ` · ${v.status}`;
   return `${repo}${stamp}${agent}${status}`;
+}
+
+function formatScriptLabel(s: ScriptSummary): string {
+  const d = new Date(s.createdAt);
+  const stamp = `${d.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  })} ${d.toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`;
+  const status = s.status === 'ready' ? '' : ` · ${s.status}`;
+  return `${s.persona} · ${stamp}${status}`;
 }
 
 function shortRepo(url: string): string {

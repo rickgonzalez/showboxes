@@ -13,6 +13,7 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.88.0",
     "@prisma/client": "^5.22.0",
     "@showboxes/shared-types": "*",
     "handlebars": "^4.7.8",
