@@ -45,7 +45,6 @@ interface SequenceDiagramContent {
 const HEADER_H = 72;          // height of the actor header row
 const ROW_H = 64;              // vertical spacing between steps
 const ROW_TOP_PAD = 24;        // gap between header and first step
-const SIDE_PAD = 40;           // horizontal padding inside wrapper
 const LABEL_FONT_PX = 13;
 
 export const sequenceDiagramTemplate: Template = {

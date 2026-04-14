@@ -234,10 +234,7 @@ export const entityMapTemplate: Template = {
       lineEls.length = 0;
       linesByEntity.clear();
 
-      const gridRect = grid.getBoundingClientRect();
       const containerRect = container.getBoundingClientRect();
-      const offsetX = gridRect.left - containerRect.left;
-      const offsetY = gridRect.top - containerRect.top;
 
       relationships.forEach((rel) => {
         const fromCard = cardMap.get(rel.from);
