@@ -4,7 +4,9 @@ export default function Home() {
       <h1>showboxes server</h1>
       <p>
         Agent orchestration for the{' '}
-        <a href="http://localhost:5173">showboxes player</a>.
+        <a href={process.env.NEXT_PUBLIC_PLAYER_URL ?? 'http://localhost:5173'}>
+          showboxes player
+        </a>.
       </p>
       <ul>
         <li>
