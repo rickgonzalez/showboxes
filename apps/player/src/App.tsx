@@ -345,6 +345,82 @@ export function App() {
     setTimeout(() => lastTemplateRef.current?.emphasize?.('2'), 3200);
   };
 
+  const runCompareSplit = () => {
+    const p = presenterRef.current;
+    if (!p) return;
+    clearAll();
+    lastTemplateRef.current = p.present({
+      template: 'compare-split',
+      content: {
+        title: 'Two Ways to Use It',
+        left: {
+          heading: 'Tag Mode',
+          icon: '💬',
+          bullets: [
+            'Interactive: @claude in comments',
+            'Full PR context',
+            'Can push commits',
+          ],
+          accent: 'palette.primary',
+        },
+        right: {
+          heading: 'Agent Mode',
+          icon: '🤖',
+          bullets: [
+            'Automated: custom prompts',
+            'Scheduled tasks',
+            'Structured output',
+          ],
+          accent: 'palette.secondary',
+        },
+        divider: 'vs',
+        staggerMs: 400,
+      },
+    });
+    setTimeout(() => lastTemplateRef.current?.emphasize?.('right'), 2200);
+  };
+
+  const runDirectoryTree = () => {
+    const p = presenterRef.current;
+    if (!p) return;
+    clearAll();
+    lastTemplateRef.current = p.present({
+      template: 'directory-tree',
+      content: {
+        root: 'claude-code-action',
+        tree: [
+          {
+            name: 'src/',
+            badge: 'core',
+            children: [
+              { name: 'action/', badge: 'entry', note: 'GitHub Action entry points' },
+              { name: 'mcp/', badge: '4 servers', note: 'MCP tool servers' },
+              {
+                name: 'utils/',
+                children: [
+                  { name: 'auth.ts', highlight: true, note: 'Token + OAuth plumbing' },
+                  { name: 'graphql.ts' },
+                  { name: 'config.ts' },
+                ],
+              },
+            ],
+          },
+          { name: 'tests/', badge: 'unit only' },
+          { name: '.github/', children: [{ name: 'workflows/' }] },
+          { name: 'action.yml', highlight: true, note: 'Action manifest' },
+          { name: 'README.md' },
+        ],
+        maxDepth: 3,
+        staggerMs: 200,
+        style: 'tree',
+      },
+    });
+    setTimeout(
+      () => lastTemplateRef.current?.emphasize?.('action.yml'),
+      2200,
+    );
+  };
+
   const runFlowDiagram = () => {
     const p = presenterRef.current;
     if (!p) return;
@@ -583,6 +659,8 @@ export function App() {
           <button disabled={!ready} onClick={runCenterStage}>center stage</button>
           <button disabled={!ready} onClick={runCodeCloud}>code cloud</button>
           <button disabled={!ready} onClick={runTransformGrid}>transform grid</button>
+          <button disabled={!ready} onClick={runCompareSplit}>compare split</button>
+          <button disabled={!ready} onClick={runDirectoryTree}>directory tree</button>
           <button disabled={!ready} onClick={runFlowDiagram}>flow diagram</button>
           <button disabled={!ready} onClick={runSequenceDiagram}>sequence diagram</button>
           <button disabled={!ready} onClick={runStepJourney}>step journey</button>

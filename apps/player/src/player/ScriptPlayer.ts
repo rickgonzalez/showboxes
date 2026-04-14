@@ -49,6 +49,21 @@ export class ScriptPlayer {
   /** Snapshot of beats not yet fired, with their absolute remaining ms. */
   private pendingBeats: Array<{ beat: Beat; remainingMs: number }> = [];
 
+  /**
+   * Incremented every time a scene is entered or torn down. Promise-driven
+   * advance (Web Speech path) captures this at scene start and only fires
+   * if it still matches — guards against a late onend from a cancelled scene.
+   */
+  private sceneEpoch = 0;
+  /**
+   * For accurate-duration voices, advance is a single setTimeout we can
+   * clear on pause/seek. For Web Speech it's a promise+floor timer pair.
+   */
+  private advanceMode: 'timer' | 'promise' = 'timer';
+  private narrationDoneAt = 0;
+  private holdFloorMs = 0;
+  private narrationSettled = false;
+
   constructor(
     script: PresentationScript,
     presenter: Presenter,
@@ -181,24 +196,107 @@ export class ScriptPlayer {
     });
     const narrationMs = narration.durationMs;
     const holdMs = scene.holdSeconds * 1000;
-    this.sceneDurationMs = Math.max(narrationMs, holdMs);
 
     this.pauseOffsetMs = 0;
     this.sceneStartedAt = performance.now();
+    this.narrationSettled = false;
+    this.holdFloorMs = holdMs;
 
     this.pendingBeats =
       scene.beats?.map((b) => ({ beat: b, remainingMs: b.at * 1000 })) ?? [];
 
     this.scheduleBeats();
-    this.scheduleAdvance(this.sceneDurationMs);
+
+    const epoch = ++this.sceneEpoch;
+    if (narration.hasAccurateDuration) {
+      // Stub / pre-generated audio: durationMs is truth. Single timer drives
+      // advance; producer's holdSeconds acts as a minimum floor.
+      this.advanceMode = 'timer';
+      this.sceneDurationMs = Math.max(narrationMs, holdMs);
+      this.scheduleAdvance(this.sceneDurationMs);
+    } else {
+      // Web Speech: durationMs is a forecast. Advance when audio actually
+      // ends AND the hold floor has elapsed. Track a provisional duration
+      // for progress reporting; it's refined when `done` resolves.
+      this.advanceMode = 'promise';
+      this.sceneDurationMs = Math.max(narrationMs, holdMs);
+      narration.done.then(() => {
+        if (this.sceneEpoch !== epoch) return;
+        this.narrationSettled = true;
+        this.narrationDoneAt = performance.now() - this.sceneStartedAt + this.pauseOffsetMs;
+        // Update reported duration to reflect real audio end when it's longer
+        // than our forecast so the progress bar doesn't overshoot.
+        this.sceneDurationMs = Math.max(this.narrationDoneAt, holdMs);
+        this.maybeAdvanceAfterNarration(epoch);
+      });
+      // The hold floor still needs its own timer in case audio finishes first.
+      this.scheduleHoldFloor(holdMs, epoch);
+    }
     this.setState('playing');
   }
 
+  /**
+   * Web Speech advance path: fires when BOTH the real audio has ended and
+   * the producer's holdSeconds floor has elapsed.
+   */
+  private maybeAdvanceAfterNarration(epoch: number): void {
+    if (this.sceneEpoch !== epoch) return;
+    if (!this.narrationSettled) return;
+    const elapsed = performance.now() - this.sceneStartedAt + this.pauseOffsetMs;
+    const remainingFloor = this.holdFloorMs - elapsed;
+    if (remainingFloor <= 0) {
+      this.advanceNow();
+    }
+    // else: the hold-floor timer will fire advanceNow when it expires.
+  }
+
+  private scheduleHoldFloor(holdMs: number, epoch: number): void {
+    const elapsed = performance.now() - this.sceneStartedAt + this.pauseOffsetMs;
+    const remaining = Math.max(0, holdMs - elapsed);
+    this.sceneTimer = window.setTimeout(() => {
+      if (this.sceneEpoch !== epoch) return;
+      if (this.narrationSettled) {
+        this.advanceNow();
+      }
+      // else: narration still playing; `done` handler will advance when it settles.
+    }, remaining);
+  }
+
+  private advanceNow(): void {
+    this.events.onSceneExit?.(this.script.scenes[this.sceneIndex], this.sceneIndex);
+    if (this.sceneIndex >= this.script.scenes.length - 1) {
+      this.end();
+    } else {
+      this.enterScene(this.sceneIndex + 1);
+    }
+  }
+
   private resumeScene(): void {
-    const remaining = this.sceneDurationMs - this.pauseOffsetMs;
     this.sceneStartedAt = performance.now();
     this.scheduleBeats();
-    this.scheduleAdvance(Math.max(0, remaining));
+    if (this.advanceMode === 'timer') {
+      const remaining = this.sceneDurationMs - this.pauseOffsetMs;
+      this.scheduleAdvance(Math.max(0, remaining));
+    } else {
+      // Promise path: if narration already ended during pause, only the hold
+      // floor is left. Otherwise reschedule the floor; the original `done`
+      // promise is still bound to the same epoch and will fire when speech
+      // resumes and finishes.
+      const epoch = this.sceneEpoch;
+      if (this.narrationSettled) {
+        const remainingFloor = this.holdFloorMs - this.pauseOffsetMs;
+        if (remainingFloor <= 0) {
+          this.advanceNow();
+          return;
+        }
+        this.sceneTimer = window.setTimeout(() => {
+          if (this.sceneEpoch !== epoch) return;
+          this.advanceNow();
+        }, remainingFloor);
+      } else {
+        this.scheduleHoldFloor(this.holdFloorMs, epoch);
+      }
+    }
     this.voice.resume();
     this.setState('playing');
   }
@@ -254,6 +352,7 @@ export class ScriptPlayer {
   }
 
   private teardownScene(): void {
+    this.sceneEpoch++;
     if (this.sceneTimer !== null) {
       window.clearTimeout(this.sceneTimer);
       this.sceneTimer = null;
@@ -261,6 +360,7 @@ export class ScriptPlayer {
     for (const id of this.beatTimers) window.clearTimeout(id);
     this.beatTimers = [];
     this.pendingBeats = [];
+    this.narrationSettled = false;
     this.voice.stop();
     this.currentHandle?.dismiss();
     this.currentHandle = null;

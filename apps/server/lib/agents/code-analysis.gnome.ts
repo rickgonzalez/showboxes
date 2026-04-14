@@ -12,7 +12,11 @@
  */
 
 import { createHash } from 'node:crypto';
-import type { AnalysisMode } from '@showboxes/shared-types';
+import {
+  LARGE_REPO_FILE_THRESHOLD,
+  type AnalysisMode,
+  type TriageReport,
+} from '@showboxes/shared-types';
 
 export interface GnomeDefinition {
   slug: string;
@@ -30,6 +34,9 @@ export interface AnalysisPromptContext {
   priorityPaths?: string[];
   /** Optional focus mode from the triage chooser. If absent, run full analysis. */
   mode?: AnalysisMode;
+  /** Triage report for the run. Used to rank subsystems when clamping
+   * `focused-brief` to MAX_FOCUSED_SUBSYSTEMS. */
+  triageReport?: TriageReport;
 }
 
 export const codeAnalysisGnome: GnomeDefinition = {
@@ -108,7 +115,7 @@ Write for someone who understands software in general but not code syntax.
 2. **Be proportional.** A 50-file project doesn't need 10 pages of analysis. Match depth to complexity.
 3. **Cite files and lines.** "In \`src/api/auth.ts\` around line 45" is verifiable; "the authentication code" is not.
 4. **Respect the creator.** Many repos you'll analyze are solo-developer work. Be constructive and specific, not dismissive.
-5. **Don't boil the ocean.** For very large repos (500+ files), focus on the core application code. In your analysis, note which areas you skipped.
+5. **Don't boil the ocean.** For very large repos (${LARGE_REPO_FILE_THRESHOLD}+ files), focus on the core application code. In your analysis, note which areas you skipped. If a Focus Mode directive above gives you a specific file budget, that budget supersedes this guideline.
 6. **Call \`submit_code_analysis\` exactly once** when your analysis is complete.`,
 };
 

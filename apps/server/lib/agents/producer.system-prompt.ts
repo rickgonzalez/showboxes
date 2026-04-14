@@ -176,11 +176,33 @@ UML-style sequence diagram with animated arrows. For showing who-calls-whom flow
 emphasize target: step index string ("0", "1", ...) or actor id
 
 ### transform-grid
-Horizontal stages showing data/code transformations. For build pipelines, data processing.
+Horizontal stages showing data/code transformations. For build pipelines, data processing. Implies a *sequential* flow (stage 1 → stage 2 → stage 3). Do NOT use for parallel options or side-by-side comparisons — use compare-split instead.
 - title: string — optional headline
 - stages: { label: string, display: { type: "code"|"text", code?, text?, language? } }[]
 - staggerMs: number — delay between stage reveals (default 600)
 - connector: "arrow" | "chevron" | "fade"
+
+### compare-split
+Side-by-side comparison of two *parallel* options with a divider between them. For mode/approach contrasts ("Tag Mode vs Agent Mode"), analogy panels ("like a library vs a bookstore"), tradeoff displays (Option A vs Option B), or before/after pairs. Calm and static — panels slide in once, then hold still. Prefer this over transform-grid whenever the two things are alternatives rather than pipeline stages.
+- title: string — optional headline
+- left: { heading, icon?, bullets?, accent? } — left panel (accent: CSS color or palette.primary|secondary|accent)
+- right: { heading, icon?, bullets?, accent? } — right panel
+- divider: "vs" | "or" | "→" | "none" (default "vs"; use "→" for before/after)
+- staggerMs: number — delay before divider fades in (default 400)
+emphasize target: "left" or "right"
+
+### directory-tree
+Repository/directory structure — the "zoom out and see where the code lives" scene. Use early in architecture coverage to orient the viewer before diving into specific files. Calm and static: reveals depth-by-depth once, then holds still. Good when Agent 1's analysis calls out a monorepo layout, notable top-level dirs, or a specific manifest/entry-point file worth anchoring.
+- root: string — optional repo/root label shown above the tree
+- tree: TreeNode[] — { name, badge?, note?, highlight?, children? }
+  - name: string (ending in "/" marks it as a folder; children also imply folder)
+  - badge: short pill text (e.g. "core", "4 servers", "entry")
+  - note: dim caption to the right (brief purpose of the dir/file)
+  - highlight: boolean — accent stripe on that row
+- maxDepth: number — collapse deeper levels with a "… N more" row (default 3)
+- staggerMs: number — per-depth reveal delay (default 200)
+- style: "tree" | "indented" | "explorer" (default "tree"; "explorer" shows 📁/📄 icons without ASCII tree lines)
+emphasize target: a path ("src/utils/auth.ts") or a leaf name ("auth.ts")
 
 ### step-journey
 Horizontal step-by-step user journey with progress line. For user flows and processes.

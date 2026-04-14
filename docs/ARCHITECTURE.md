@@ -15,7 +15,8 @@ Point an agent at a GitHub repo, get back an animated visual presentation that e
 │  ┌─────────────┐  ┌──────────────────────────────────────┐   │
 │  │ GitHub URL   │  │  Presentation Settings               │   │
 │  │ + OAuth      │  │                                      │   │
-│  └──────┬──────┘  │  Audience:    [■■■■■□□□□□] technical  │   │
+│  └──────┬──────┘  │  Analysis mode: Focused-brief (modal)  │   │
+│         │         │  Audience:    [■■■■■□□□□□] technical  │   │
 │         │         │  Detail:      [■■■■■■□□□□] deep       │   │
 │         │         │  Pace:        [■■■□□□□□□□] slow        │   │
 │         │         │  Voice:       ElevenLabs / Kokoro      │   │
@@ -27,14 +28,40 @@ Point an agent at a GitHub repo, get back an animated visual presentation that e
           │                                │
           ▼                                │
 ┌──────────────────┐                       │
-│   AGENT 1        │                       │
-│   Code Analyst   │                       │
+│   AGENT 1a       │                       │
+│   Triage (Haiku) │                       │
 │                  │                       │
 │   Clone repo     │                       │
-│   Map structure  │                       │
-│   Assess quality │                       │
-│   Explain in     │                       │
-│   plain English  │                       │
+│   Read tree +    │                       │
+│   manifests only │                       │
+│                  │                       │
+│   Output:        │                       │
+│   TriageReport   │                       │
+│   (subsystems,   │                       │
+│    entryPoints,  │                       │
+│    totalFiles…)  │                       │
+└────────┬─────────┘                       │
+         ▼                                 │
+┌──────────────────┐                       │
+│  TRIAGE MODAL    │                       │
+│  User picks:     │                       │
+│  • Overview      │                       │
+│  • Focused-brief │                       │
+│  • Scorecard     │                       │
+│  • Walkthrough   │                       │
+│  → AnalysisMode  │                       │
+└────────┬─────────┘                       │
+         ▼                                 │
+┌──────────────────┐                       │
+│   AGENT 1b       │                       │
+│   Analysis       │                       │
+│   (Sonnet)       │                       │
+│                  │                       │
+│   Scoped by mode:│                       │
+│   - file budget  │                       │
+│   - subsystems   │                       │
+│   - entry point  │                       │
+│   - depth slider │                       │
 │                  │                       │
 │   Output:        │                       │
 │   Analysis JSON  │                       │
@@ -104,19 +131,44 @@ Point an agent at a GitHub repo, get back an animated visual presentation that e
 
 ## The Two Agents
 
-### Agent 1 — Code Analyst
+> **Agent 1 is a two-stage pipeline.** A cheap triage run (1a) produces a map of the repo; the user picks an analysis mode from a modal; a scoped analysis run (1b) does the actual deep read. The "two agents" framing is still correct at the product level — Agent 1 produces analysis, Agent 2 produces presentation — but the Agent 1 stage internally splits into 1a + 1b. See [AGENT-1-TUNABLES.md](./AGENT-1-TUNABLES.md) for the full tunables map.
+
+### Agent 1a — Code Triage
+
+**Input:** A GitHub repo URL.
+
+**Process:** Clones the repo. Reads only the tree (`find` / `ls` + extension counts), README, and top-level manifests/configs. Does **not** read source files.
+
+**Output:** `TriageReport` — `repoUrl`, `totalFiles`, `approxLines`, `languages`, `framework`, `buildTool`, `workspaces`, `entryPoints[]`, `subsystems[]` (3–8 major functional areas with importance scores), `highlights[]` (1–3), `notes`. This is the contract that flows 1a → modal → 1b.
+
+**Runtime:** Anthropic Managed Agents beta. Model: `claude-haiku-4-5` — cheap and fast, appropriate for a tree-walk. Prompt-side output cap is 4k tokens. Typical wall time: ~30s.
+
+### Triage Modal — User Picks an Analysis Mode
+
+After 1a completes, the client shows the `TriageReport` and asks the user to pick an `AnalysisMode`:
+
+| Mode | Payload | Effect on 1b |
+|---|---|---|
+| `overview` | `{ kind: 'overview' }` | Breadth over depth — ~30 files total, concise prose |
+| `focused-brief` | `{ kind, subsystems[], depth: 0..1 }` | Deep read of picked subsystems — 15-50 files each (scales with depth); three prose bands (paragraph / bullets / richly-cited) |
+| `scorecard` | `{ kind: 'scorecard' }` | Prioritize `codeQuality` + `health`; arch & plainEnglish kept short |
+| `walkthrough` | `{ kind, entryPoint }` | Trace the entry point as one journey; unrelated areas brief |
+
+Defaults from triage: top-3 subsystems by importance preselected; first entry point preselected; if `totalFiles` exceeds `LARGE_REPO_FILE_THRESHOLD` the modal defaults to `focused-brief`. The depth slider's initial value is `DEFAULT_DEPTH`. Both constants live in [packages/shared-types/src/constants.ts](../packages/shared-types/src/constants.ts) — **you MUST import them rather than inlining `0.3` or `300`**, or the modal, the API's Zod default, and the gnome prompt will drift. (CS-13 centralized these; mode-aware budgets on [CS-12](https://horizontwolabs.atlassian.net/browse/CS-12).)
+
+### Agent 1b — Code Analysis
 
 Already defined (see `extract-gnome-kit/agents/defaults/code-analysis.defaults.ts`).
 
-**Input:** A GitHub repo URL (from the user) + optional focus areas.
+**Input:** The repo URL, the `TriageReport` (for context), and the chosen `AnalysisMode`.
 
-**Process:** Clones the repo. Uses built-in file tools (bash, glob, grep, read) to explore. Produces a structured analysis.
+**Process:** Clones the repo. Uses built-in file tools (bash, glob, grep, read) to explore. The `AnalysisMode` is rendered into the prompt by [`renderModeDirective`](apps/server/lib/agents/render-prompt.ts), which injects file budgets, subsystem focus, or entry-point tracing depending on the mode.
 
 **Output:** `AnalysisJSON` — the structured schema defined in `platform-tools/providers/code-analysis.ts`. Five sections: quickFacts, architecture, codeQuality, plainEnglish, health.
 
-**Runtime:** Anthropic Managed Agents beta. The built-in `agent_toolset_20260401` gives it bash + file tools. The `submit_code_analysis` custom tool delivers structured output.
+**Runtime:** Anthropic Managed Agents beta. Model: `claude-sonnet-4-5`. The built-in `agent_toolset_20260401` gives it bash + file tools. The `submit_code_analysis` custom tool delivers structured output. Typical wall time: 2–10 minutes depending on mode.
 
-**Key constraint:** This agent has NO knowledge of the presentation layer. It doesn't know about showboxes, templates, or visual primitives. It produces pure analysis. This separation is what makes the system composable — the same analysis could feed a slide deck, a PDF report, or a live presentation.
+**Key constraint:** These agents have NO knowledge of the presentation layer. They don't know about showboxes, templates, or visual primitives. They produce pure analysis. This separation is what makes the system composable — the same analysis could feed a slide deck, a PDF report, or a live presentation.
 
 ### Agent 2 — Producer / Director
 
@@ -512,7 +564,7 @@ class ScriptPlayer {
 ## Data Flow Summary
 
 ```
-User enters GitHub URL + settings
+User enters GitHub URL + Agent 2 settings
          │
          ▼
   ┌──────────────┐
@@ -522,10 +574,21 @@ User enters GitHub URL + settings
   └──────┬───────┘
          │
          ▼
+  ┌──────────────┐     TriageReport
+  │  Agent 1a    │─────────────────┐
+  │  Triage      │                 │
+  │  (Haiku)     │                 ▼
+  └──────────────┘         ┌──────────────┐
+                           │ Triage Modal │
+                           │ User picks   │
+                           │ AnalysisMode │
+                           └──────┬───────┘
+                                  │
+                                  ▼
   ┌──────────────┐     AnalysisJSON
-  │  Agent 1     │─────────────────┐
-  │  (Managed    │                 │
-  │   Agents API)│                 │
+  │  Agent 1b    │─────────────────┐
+  │  Analysis    │                 │
+  │  (Sonnet)    │                 │
   └──────────────┘                 │
                                    │
   ┌──────────────┐                 │   UserSettings
@@ -550,17 +613,28 @@ User enters GitHub URL + settings
 
 ## User Settings Schema
 
-These travel from the UI to Agent 2 as part of its context.
+These travel from the UI through the pipeline. The `analysisMode` field shapes Agent 1b; the rest shape Agent 2. `analysisMode` is filled in from the triage modal, not from the settings form — see [Agent 1b](#agent-1b--code-analysis) above.
 
 ```typescript
 interface UserSettings {
   /** GitHub repo to analyze */
   repoUrl: string;
 
+  /**
+   * How Agent 1b scopes its analysis. Selected by the user from the triage
+   * modal after Agent 1a completes. If omitted (direct API calls), Agent 1b
+   * runs without a mode directive — unbounded. Prefer setting it.
+   */
+  analysisMode?:
+    | { kind: "overview" }
+    | { kind: "focused-brief"; subsystems: string[]; depth: number /* 0..1 */ }
+    | { kind: "scorecard" }
+    | { kind: "walkthrough"; entryPoint: string };
+
   /** 0.0 = "explain it to my mom", 1.0 = "I'm the senior architect" */
   audienceLevel: number;
 
-  /** 0.0 = executive summary, 1.0 = line-by-line deep dive */
+  /** 0.0 = executive summary, 1.0 = line-by-line walkthrough */
   detailLevel: number;
 
   /** 0.0 = slow and deliberate, 1.0 = fast and dense */
@@ -577,27 +651,32 @@ interface UserSettings {
     speed: number;
   };
 
-  /** Optional focus areas — if empty, analyze everything */
+  /**
+   * Optional free-text focus areas. Precedence vs `analysisMode` is tracked
+   * on CS-14 — for `focused-brief` and `walkthrough`, the mode-specific
+   * fields (`subsystems`, `entryPoint`) are the intended lever.
+   */
   focusAreas?: string[];
 
-  /** Optional: specific files or directories to prioritize */
+  /** Optional: specific files or directories to prioritize. See CS-14. */
   priorityPaths?: string[];
 }
 ```
 
 **How settings influence each agent:**
 
-| Setting | Agent 1 (Analyst) | Agent 2 (Producer) |
-|---------|-------------------|--------------------|
-| `audienceLevel` | — (always produces full analysis) | Controls jargon level, analogy density, code vs. diagram ratio |
-| `detailLevel` | — (always produces full analysis) | Controls number of scenes, depth per topic |
-| `pace` | — | Controls `holdSeconds`, narration length, beat density |
-| `persona` | — | Controls tone, visual style, fx choices, transition style |
-| `voice` | — | Embedded in script `defaults.voice` for the Player |
-| `focusAreas` | Included in task description | Determines which analysis sections get more scenes |
-| `priorityPaths` | Included in task description | Determines which files get `code-zoom` treatment |
+| Setting | Agent 1a (Triage) | Agent 1b (Analysis) | Agent 2 (Producer) |
+|---------|-------------------|---------------------|--------------------|
+| `analysisMode` | — (1a runs before the mode is picked) | **The big one.** Rendered into the prompt by `renderModeDirective` — sets file budget, subsystem focus, entry point, or depth | — |
+| `audienceLevel` | — | — | Controls jargon level, analogy density, code vs. diagram ratio |
+| `detailLevel` | — | — | Controls number of scenes, depth per topic |
+| `pace` | — | — | Controls `holdSeconds`, narration length, beat density |
+| `persona` | — | — | Controls tone, visual style, fx choices, transition style |
+| `voice` | — | — | Embedded in script `defaults.voice` for the Player |
+| `focusAreas` | — | Injected as free-text hint (legacy; see CS-14) | Determines which analysis sections get more scenes |
+| `priorityPaths` | — | Injected as free-text hint (legacy; see CS-14) | Determines which files get `code-zoom` treatment |
 
-Agent 1 always produces the same comprehensive analysis regardless of settings. The settings shape the *presentation*, not the *analysis*. This means a user can re-render the same analysis with different settings without re-running Agent 1.
+Agent 1a always runs the same way — it's a cheap tree-walk that produces the `TriageReport`. Agent 1b's output **does** vary with `analysisMode`: `overview` gets you a 30-file breadth read, `focused-brief` gets you deep subsystem reads, etc. Agent 2 operates on the `AnalysisJSON` that Agent 1b produces — so swapping presentation settings (audience, pace, persona) re-runs only Agent 2. Swapping `analysisMode` re-runs Agent 1b (and transitively invalidates the downstream script). The triage report itself is reusable across modes.
 
 ---
 
@@ -633,14 +712,22 @@ Build and test each visual primitive with hardcoded data. Get them looking right
 ### Phase 1 — Script Player
 Build the `ScriptPlayer` class that reads a `PresentationScript` and drives the `Presenter`. Test with a hand-written script JSON. No agents yet — just prove the playback runtime works.
 
-### Phase 2 — Agent 1 integration
-Stand up a minimal server. Wire the Code Analysis agent (Managed Agents API). Accept a GitHub URL, run the analysis, return `AnalysisJSON`. Store it.
+### Phase 2 — Agent 1 integration (two stages)
+Stand up a minimal server. Wire the two-stage Agent 1 pipeline via the Managed Agents API:
+
+1. **Agent 1a (triage)** — accept a GitHub URL, run the tree-walk gnome, return `TriageReport`. Haiku, ~30s.
+2. **Triage modal** — render the report client-side, let the user pick an `AnalysisMode` (overview / focused-brief / scorecard / walkthrough). The modal preselects top-3 subsystems by importance and the first entry point; it auto-defaults to `focused-brief` for large repos.
+3. **Agent 1b (analysis)** — feed repo URL + `TriageReport` + `AnalysisMode` into the analysis gnome. Sonnet. Mode is rendered into the prompt by `renderModeDirective`. Return `AnalysisJSON`. Store both the triage report and the analysis so either can be reused.
 
 ### Phase 3 — Agent 2 integration
 Wire the Producer/Director agent. Feed it `AnalysisJSON` + hardcoded settings. Get back a `PresentationScript`. Play it.
 
 ### Phase 4 — UI and settings
-Build the input page: GitHub URL, OAuth, sliders, voice picker, template chooser. Wire settings through to Agent 2.
+Build the input page: GitHub URL, OAuth, sliders, voice picker, template chooser. Wire the triage modal between 1a and 1b so the user's `AnalysisMode` choice flows into the analysis request. Wire Agent 2 presentation settings through to the Producer.
+
+Two distinct moments of user input:
+- **Pre-analysis:** repo URL + OAuth + Agent 2 settings (audience, detail, pace, persona, voice).
+- **Post-triage:** the `TriageModal` — user sees the `TriageReport` and picks an `AnalysisMode`. This populates `UserSettings.analysisMode` and kicks off Agent 1b.
 
 ### Phase 5 — Voice
 Integrate ElevenLabs or Kokoro TTS. Generate audio per scene. Sync playback with the Script Player.
@@ -658,11 +745,11 @@ The Producer/Director is a pure reasoning task — analysis JSON in, presentatio
 ### Pre-generation for voice audio
 Users will expect this to take a couple of minutes. The flow is: analyze (60-120s) → generate script (10-20s) → generate all voice audio (30-60s) → ready to play. A progress indicator walks the user through each stage.
 
-### Large repo handling: Agent 1 returns a choice
-For repos over ~300 files, the analysis agent's first pass produces a **triage response** instead of a full analysis. The triage identifies the major subsystems and asks the user: *"Should we focus on how this app handles authentication, or do a high-level overview of the whole thing?"* The user picks a focus, and Agent 1 runs a targeted deep analysis. This keeps context windows manageable and produces better presentations (a focused 20-scene presentation beats a shallow 50-scene one).
+### Large repo handling: Agent 1 is split into triage + analysis
+Every run — not just large repos — goes through a two-stage Agent 1. A cheap triage pass (1a, Haiku, tree + manifests only, ~30s) produces a `TriageReport` identifying major subsystems and entry points. The user then picks an `AnalysisMode` from the triage modal — overview, focused-brief (with subsystem + depth), scorecard, or walkthrough. Agent 1b (Sonnet) does the deep read scoped to that mode. This keeps context windows manageable and produces better presentations (a focused 20-scene presentation beats a shallow 50-scene one). See [Agent 1b — Code Analysis](#agent-1b--code-analysis) and [AGENT-1-TUNABLES.md](./AGENT-1-TUNABLES.md).
 
 ### Re-rendering without re-analyzing
-The analysis is cached. When a user tweaks settings (audience, pace, persona) and hits "Regenerate," only Agent 2 re-runs. The UI makes this clear: *"Your analysis is ready. Adjust settings and regenerate the presentation."*
+The analysis is cached. When a user tweaks Agent 2 settings (audience, pace, persona) and hits "Regenerate," only Agent 2 re-runs. Changing `analysisMode` re-runs Agent 1b (the triage report is reusable and does not need re-running). The UI makes this clear: *"Your analysis is ready. Adjust settings and regenerate the presentation."*
 
 ### Server: Next.js on Vercel
 Domain: **codesplain.io**. Next.js App Router. Server Actions or API routes for agent orchestration. Vercel deployment with serverless functions for the agent calls (may need longer function timeouts for Agent 1 — Vercel Pro/Enterprise, or a background job pattern).
@@ -796,13 +883,8 @@ The system prompt is essentially the "creative brief" for the director. It chang
 
 3. **Script Player sync precision.** With pre-generated audio, the Player needs to know each clip's duration to schedule beats accurately. Either embed duration in the script (Agent 2 estimates) or measure actual audio duration after generation and adjust beat timings.
 
-4. **Deep-dive runs longer than overview.** Agent 1 is now split into Agent 1a (triage — Haiku, tree+manifests only, ~30s) and Agent 1b (deep analysis — Sonnet, scoped by user-chosen mode). The four modes are `overview`, `deep-dive`, `scorecard`, and `walkthrough`, selected via a modal after triage completes. First testing (2026-04-13) showed **deep-dive on 2 subsystems running longer than a full overview**, which is the inverse of what we'd expect from a scoped mode.
+4. **`maxExecuteTokens` is not yet mode-aware** (CS-3). Agent 1 is split into Agent 1a (triage — Haiku, tree+manifests only, ~30s) and Agent 1b (deep analysis — Sonnet, scoped by user-chosen mode). The four modes are `overview`, `focused-brief`, `scorecard`, and `walkthrough`, selected via a modal after triage completes.
 
-   **Cause:** the mode directives live in `apps/server/lib/agents/render-prompt.ts` (`renderModeDirective`). Overview has a hard ~30-file cap. Deep-dive has no file cap — the agent traces imports across subsystem boundaries (auth pulls in db, config, middleware, shared utils) and the prompt actively encourages "detailed findings," which fills the 32k output budget.
+   First testing (2026-04-13) showed the old `deep-dive` mode running longer than a full overview — the inverse of expectation. Fixed under CS-6 by renaming the mode to `focused-brief` and adding a `depth` slider (0–1, default 0.3) that drives a per-subsystem file budget (`Math.round(15 + depth * 35)`) and a three-band prose style in [`renderModeDirective`](apps/server/lib/agents/render-prompt.ts). The name "deep dive" is reserved for a future exhaustive code-level mode.
 
-   **Planned tweaks (deferred):**
-   - Soft file budget per deep-dive subsystem (~40 files), with guidance to prefer files the subsystem owns outright over imported utilities.
-   - Tighter "cover other areas briefly" instruction so the non-focused portion doesn't quietly expand.
-   - Consider a lower `maxExecuteTokens` for deep-dive than for full analysis.
-
-   All three tweaks are localized to `renderModeDirective` — no schema or UI changes needed.
+   Remaining lever: `maxExecuteTokens` is still a static 32k per gnome definition. Threading a mode-aware override through the active session layer is tracked on **CS-3**.

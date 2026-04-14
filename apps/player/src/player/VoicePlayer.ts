@@ -7,8 +7,16 @@
  */
 
 export interface SpeakHandle {
-  /** Estimated total duration in ms. Available immediately for scheduling. */
+  /** Total duration in ms, available immediately for scheduling beats. */
   durationMs: number;
+  /**
+   * True when durationMs is the real measured duration (stub timers,
+   * pre-generated audio blobs). False when it's a forecast that can drift
+   * from the real audio (Web Speech — rate varies per voice/OS). Consumers
+   * should treat durationMs as a forecast when false and rely on `done`
+   * for actual end-of-audio.
+   */
+  hasAccurateDuration: boolean;
   /** Resolves when narration finishes (or is cancelled). */
   done: Promise<void>;
   /** Stops the narration early. Safe to call multiple times. */
@@ -55,6 +63,7 @@ export class StubVoicePlayer implements VoicePlayer {
 
     const handle: SpeakHandle = {
       durationMs,
+      hasAccurateDuration: true,
       done,
       cancel: () => this.stop(),
     };
@@ -198,6 +207,7 @@ export class WebSpeechVoicePlayer implements VoicePlayer {
 
     return {
       durationMs,
+      hasAccurateDuration: false,
       done,
       cancel: () => this.stop(),
     };

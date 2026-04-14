@@ -88,7 +88,7 @@ export async function POST(req: Request) {
       .replace('T', ' ')
       .slice(0, 16)}`;
 
-    let saved: { id: string } | null = null;
+    let saved: { id: string };
     try {
       saved = await prisma.script.create({
         data: {
@@ -106,14 +106,23 @@ export async function POST(req: Request) {
         select: { id: true },
       });
     } catch (dbErr) {
-      console.warn('[/api/script] failed to persist script:', dbErr);
+      console.error('[/api/script] failed to persist script:', dbErr);
+      return NextResponse.json(
+        {
+          error: 'PERSIST_FAILED',
+          detail: (dbErr as Error).message,
+          script: result.script,
+          _usage: result.usage,
+        },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({
       ...result.script,
       _usage: result.usage,
-      _id: saved?.id ?? null,
-      _label: saved ? label : null,
+      _id: saved.id,
+      _label: label,
     });
   } catch (e) {
     if (e instanceof ProducerError) {

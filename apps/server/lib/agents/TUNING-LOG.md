@@ -17,7 +17,7 @@ Track prompt changes, timing observations, and their effects here. Each entry co
 |-----|------|-----------------|
 | `[agent-1a]` | `code-triage.gnome.ts` | Triage pass (Haiku) — tree + manifests only, ~30s |
 | `[agent-1b]` | `code-analysis.gnome.ts` | Full analysis (Sonnet) — five-section structured output |
-| `[mode-directive]` | `render-prompt.ts` → `renderModeDirective()` | Steers depth/breadth per mode (overview, deep-dive, scorecard, walkthrough) |
+| `[mode-directive]` | `render-prompt.ts` → `renderModeDirective()` | Steers depth/breadth per mode (overview, focused-brief, scorecard, walkthrough) |
 | `[producer]` | `producer.system-prompt.ts` | Static system prompt — creative principles, primitive catalog, constraints |
 | `[producer-msg]` | `producer.message.ts` | User message assembly — settings hints, analysis JSON, focus instructions |
 | `[template]` | `../../player/src/templates/` | Visual primitive implementations |
@@ -25,6 +25,22 @@ Track prompt changes, timing observations, and their effects here. Each entry co
 ---
 
 ## Entries
+
+### 2026-04-13 — Rename `deep-dive` → `focused-brief`, add depth lever
+
+**Area:** `[mode-directive]` `[agent-1b]`
+**Jira:** CS-6
+**Change:** Renamed the scoped-subsystem mode from `deep-dive` to `focused-brief` and added a `depth: number` (0–1, default 0.3) lever on that variant. The name "deep dive" is reserved for a future exhaustive code-level mode. The directive now computes a per-subsystem file budget as `Math.round(15 + depth * 35)` (15 @ 0, ~32 @ 0.5, 50 @ 1) and picks one of three prose bands: concise paragraph / bulleted findings / detailed findings with citations.
+
+**Why:** Previous `deep-dive` had no file cap and explicitly encouraged "detailed findings," so a scoped run consistently filled the 32k output budget and ran longer than the capped 30-file overview. A single continuous lever lets the user trade breadth for thoroughness without adding more modes.
+
+**Touched:** `render-prompt.ts` (directive body), `triage.ts` (union + new `depth` field), `route.ts` (Zod schema + default coercion), `TriageModal.tsx` (copy + slider), `index.css` (`sb-modal-slider`).
+
+**Deferred to CS-3:** `maxExecuteTokens` is still a static 32k per gnome definition and is not yet mode-aware. This change constrains via prompt only.
+
+**Status:** Landed. Verify with a focused-brief run on a mid-size repo and compare wall-clock against overview at default depth.
+
+---
 
 ### 2026-04-13 — Known issue: deep-dive runs longer than overview
 
@@ -44,7 +60,7 @@ Track prompt changes, timing observations, and their effects here. Each entry co
 
 **Location:** All three tweaks are localized to `renderModeDirective()` in `render-prompt.ts` — no schema or UI changes needed.
 
-**Status:** Not yet attempted
+**Status:** Addressed by CS-6 (see entry above). File budget and prose banding landed via the new `depth` lever; `maxExecuteTokens` still pending on CS-3.
 
 ---
 

@@ -6,6 +6,8 @@ import { ensureProvisioned } from '@/lib/managed-agents/bootstrap';
 import { startSession, runSessionToCompletion } from '@/lib/agents/session';
 import { codeAnalysisGnome, gnomeVersion } from '@/lib/agents/code-analysis.gnome';
 import { renderCodeAnalysisPrompt } from '@/lib/agents/render-prompt';
+import { traceMode } from '@/lib/agents/trace-mode';
+import { DEFAULT_DEPTH, type TriageReport } from '@showboxes/shared-types';
 
 // Agent 1 runs long. Vercel default function timeout (10s Hobby / 60s Pro)
 // isn't enough; crank it. `after()` continues past the response anyway,
@@ -16,7 +18,11 @@ export const maxDuration = 60;
 // runs in full-coverage mode (existing behavior).
 const modeSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('overview') }),
-  z.object({ kind: z.literal('deep-dive'), subsystems: z.array(z.string()) }),
+  z.object({
+    kind: z.literal('focused-brief'),
+    subsystems: z.array(z.string()).min(1),
+    depth: z.number().min(0).max(1).default(DEFAULT_DEPTH),
+  }),
   z.object({ kind: z.literal('scorecard') }),
   z.object({ kind: z.literal('walkthrough'), entryPoint: z.string() }),
 ]);
@@ -26,6 +32,9 @@ const bodySchema = z.object({
   focusAreas: z.array(z.string()).optional(),
   priorityPaths: z.array(z.string()).optional(),
   mode: modeSchema.optional(),
+  // Optional pass-through from the triage step. Used only for the
+  // tunables trace — opaque diagnostic blob, not validated structurally.
+  triageReport: z.record(z.string(), z.unknown()).optional(),
 });
 
 export async function POST(req: Request) {
@@ -39,11 +48,16 @@ export async function POST(req: Request) {
     );
   }
 
+  const triageReport = (parsed.triageReport as TriageReport | undefined) ?? undefined;
+
   const record = await prisma.analysis.create({
     data: {
       repoUrl: parsed.repoUrl,
       status: 'running',
       agentVersion: gnomeVersion(codeAnalysisGnome),
+      // Populated below once we've rendered the prompt and know the
+      // effective (post-clamp) mode.
+      tunables: {} as unknown as object,
     },
   });
 
@@ -55,15 +69,20 @@ export async function POST(req: Request) {
     const { environmentExternalId, codeAnalysisAgentExternalId } =
       await ensureProvisioned();
 
-    const userMessage = renderCodeAnalysisPrompt(
-      codeAnalysisGnome.systemPromptTemplate,
-      {
+    const { prompt: userMessage, effectiveMode, clampedSubsystems } =
+      renderCodeAnalysisPrompt(codeAnalysisGnome.systemPromptTemplate, {
         repoUrl: parsed.repoUrl,
         focusAreas: parsed.focusAreas,
         priorityPaths: parsed.priorityPaths,
         mode: parsed.mode,
-      },
-    );
+        triageReport,
+      });
+
+    const tunables = traceMode({
+      report: triageReport ?? null,
+      mode: effectiveMode,
+      clampedSubsystems,
+    });
 
     const start = await startSession({
       agentExternalId: codeAnalysisAgentExternalId,
@@ -75,7 +94,7 @@ export async function POST(req: Request) {
 
     await prisma.analysis.update({
       where: { id: record.id },
-      data: { sessionId },
+      data: { sessionId, tunables: tunables as unknown as object },
     });
   } catch (e) {
     const message = (e as Error).message;

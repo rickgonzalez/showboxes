@@ -12,6 +12,8 @@ import { stepJourneyTemplate } from './step-journey';
 import { dataPipelineTemplate } from './data-pipeline';
 import { scorecardTemplate } from './scorecard';
 import { entityMapTemplate } from './entity-map';
+import { compareSplitTemplate } from './compare-split';
+import { directoryTreeTemplate } from './directory-tree';
 
 /**
  * Register all built-in templates. Importing this file for its side
@@ -31,6 +33,8 @@ registerTemplate(stepJourneyTemplate);
 registerTemplate(dataPipelineTemplate);
 registerTemplate(scorecardTemplate);
 registerTemplate(entityMapTemplate);
+registerTemplate(compareSplitTemplate);
+registerTemplate(directoryTreeTemplate);
 
 export { registerTemplate, getTemplate, listTemplates } from './registry';
 export type { Template, TemplateContent, TemplateHandle } from './registry';

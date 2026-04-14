@@ -120,6 +120,8 @@ export const SUBMIT_PRESENTATION_SCRIPT_TOOL: Tool = {
                     'flow-diagram',
                     'sequence-diagram',
                     'transform-grid',
+                    'compare-split',
+                    'directory-tree',
                     'step-journey',
                     'data-pipeline',
                     'scorecard',

@@ -205,12 +205,15 @@ export function PipelinePanel({ onPlayScript, canPlay }: PipelinePanelProps) {
   };
 
   const runDeepAnalysis = async (mode: AnalysisMode) => {
+    // Capture before we clear it — the server uses the report for the
+    // tunables trace on the Analysis row.
+    const report = triageReport ?? undefined;
     setTriageReport(null);
     setError(null);
     setStage('analyzing');
     setAnalyzeProgress('starting session…');
     try {
-      const { id } = await startAnalyze(repoUrl, mode);
+      const { id } = await startAnalyze(repoUrl, mode, report);
       setAnalyzeProgress(`running (id ${id.slice(0, 8)}…)`);
       await refreshVersions();
       const record = await pollAnalysis(id, {

@@ -26,6 +26,10 @@ model Analysis {
   agentVersion String?
   // The AnalysisJSON produced by submit_code_analysis. Null until status='ready'.
   data      Json?
+  // Trace of the effective tunables for this run — captures the 1a triage
+  // signals + the user's mode pick + the derived 1b budgets/prose bands.
+  // See docs/AGENT-1-TUNABLES.md §5 and lib/agents/trace-mode.ts.
+  tunables  Json?
   error     String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

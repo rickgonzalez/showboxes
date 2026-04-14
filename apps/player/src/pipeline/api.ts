@@ -37,11 +37,12 @@ function api(path: string): string {
 export async function startAnalyze(
   repoUrl: string,
   mode?: AnalysisMode,
+  triageReport?: TriageReport,
 ): Promise<{ id: string; status: string }> {
   const res = await fetch(api('/api/analyze'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ repoUrl, mode }),
+    body: JSON.stringify({ repoUrl, mode, triageReport }),
   });
   if (!res.ok) {
     throw new Error(`analyze failed: ${res.status} ${await res.text()}`);

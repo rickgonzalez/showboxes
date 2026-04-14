@@ -55,10 +55,23 @@ export interface TriageReport {
  * The four presentation modes the user can pick after triage.
  * Each one shapes what the deep-analysis agent (Agent 1b) focuses on
  * and how much it produces.
+ *
+ * Note: the name "deep dive" is reserved for a future exhaustive
+ * code-level mode. The current scoped-subsystem read is a
+ * `focused-brief` — budgeted by the `depth` lever.
  */
 export type AnalysisMode =
   | { kind: 'overview' }
-  | { kind: 'deep-dive'; subsystems: string[] }
+  | {
+      kind: 'focused-brief';
+      subsystems: string[];
+      /**
+       * 0 = brief/fast, 1 = thorough. Drives the file budget per
+       * subsystem and the prose style in the system-prompt directive
+       * (see `renderModeDirective` in apps/server/lib/agents/render-prompt.ts).
+       */
+      depth: number;
+    }
   | { kind: 'scorecard' }
   | { kind: 'walkthrough'; entryPoint: string };
 

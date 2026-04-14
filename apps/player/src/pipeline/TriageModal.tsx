@@ -1,5 +1,10 @@
 import { useState } from 'react';
-import type { AnalysisMode, TriageReport } from '@showboxes/shared-types';
+import {
+  DEFAULT_DEPTH,
+  LARGE_REPO_FILE_THRESHOLD,
+  type AnalysisMode,
+  type TriageReport,
+} from '@showboxes/shared-types';
 
 interface TriageModalProps {
   report: TriageReport;
@@ -11,27 +16,30 @@ type ModeKind = AnalysisMode['kind'];
 
 /**
  * After triage completes, show this modal so the user can pick how the
- * deep analysis should focus. Four choices:
- *   1. overview      — broad tour, ~30 files
- *   2. deep-dive     — pick 1-3 subsystems from triage.subsystems
- *   3. scorecard     — quality + health emphasis
- *   4. walkthrough   — pick one entry point, trace it end-to-end
+ * analysis should focus. Four choices:
+ *   1. overview       — broad tour, ~30 files
+ *   2. focused-brief  — pick 1-3 subsystems + dial depth slider
+ *   3. scorecard      — quality + health emphasis
+ *   4. walkthrough    — pick one entry point, trace it end-to-end
  *
  * The modal is intentionally minimal styling — inherits the app's
  * existing toolbar look via sb-* classes where possible.
  */
 export function TriageModal({ report, onConfirm, onCancel }: TriageModalProps) {
   const defaultKind: ModeKind =
-    report.totalFiles > 300 ? 'deep-dive' : 'overview';
+    report.totalFiles > LARGE_REPO_FILE_THRESHOLD ? 'focused-brief' : 'overview';
 
   const [kind, setKind] = useState<ModeKind>(defaultKind);
 
-  // deep-dive: preselect top-3 by importance if present, else first 3.
+  // focused-brief: preselect top-3 by importance if present, else first 3.
   const sortedSubsystems = [...report.subsystems].sort(
     (a, b) => (b.importance ?? 0) - (a.importance ?? 0),
   );
   const defaultPicked = sortedSubsystems.slice(0, 3).map((s) => s.name);
   const [picked, setPicked] = useState<string[]>(defaultPicked);
+
+  // depth: 0 = brief, 1 = thorough. Fed into renderModeDirective server-side.
+  const [depth, setDepth] = useState<number>(DEFAULT_DEPTH);
 
   // walkthrough: default to the first entry point.
   const [entryPoint, setEntryPoint] = useState<string>(
@@ -50,9 +58,9 @@ export function TriageModal({ report, onConfirm, onCancel }: TriageModalProps) {
         return { kind: 'overview' };
       case 'scorecard':
         return { kind: 'scorecard' };
-      case 'deep-dive':
+      case 'focused-brief':
         if (picked.length === 0) return null;
-        return { kind: 'deep-dive', subsystems: picked };
+        return { kind: 'focused-brief', subsystems: picked, depth };
       case 'walkthrough':
         if (!entryPoint) return null;
         return { kind: 'walkthrough', entryPoint };
@@ -83,10 +91,10 @@ export function TriageModal({ report, onConfirm, onCancel }: TriageModalProps) {
               onClick={() => setKind('overview')}
             />
             <ModeCard
-              selected={kind === 'deep-dive'}
-              title="Deep dive"
-              hint="Pick 1-3 subsystems. Thorough read of those areas."
-              onClick={() => setKind('deep-dive')}
+              selected={kind === 'focused-brief'}
+              title="Focused brief"
+              hint="Pick 1-3 subsystems. Dial the slider for how deep to go."
+              onClick={() => setKind('focused-brief')}
             />
             <ModeCard
               selected={kind === 'scorecard'}
@@ -103,44 +111,67 @@ export function TriageModal({ report, onConfirm, onCancel }: TriageModalProps) {
           </div>
         </div>
 
-        {kind === 'deep-dive' && (
-          <div className="sb-modal-section">
-            <div className="sb-modal-section-label">
-              Subsystems ({picked.length} selected)
-            </div>
-            <div className="sb-modal-subsystems">
-              {sortedSubsystems.map((s) => (
-                <label
-                  key={s.name}
-                  className={`sb-modal-subsystem ${
-                    picked.includes(s.name) ? 'sb-modal-subsystem-picked' : ''
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={picked.includes(s.name)}
-                    onChange={() => togglePick(s.name)}
-                  />
-                  <div className="sb-modal-subsystem-body">
-                    <div className="sb-modal-subsystem-name">
-                      {s.name}
-                      {typeof s.importance === 'number' && (
-                        <span className="sb-modal-subsystem-weight">
-                          {Math.round(s.importance * 100)}
-                        </span>
-                      )}
+        {kind === 'focused-brief' && (
+          <>
+            <div className="sb-modal-section">
+              <div className="sb-modal-section-label">
+                Subsystems ({picked.length} selected)
+              </div>
+              <div className="sb-modal-subsystems">
+                {sortedSubsystems.map((s) => (
+                  <label
+                    key={s.name}
+                    className={`sb-modal-subsystem ${
+                      picked.includes(s.name) ? 'sb-modal-subsystem-picked' : ''
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={picked.includes(s.name)}
+                      onChange={() => togglePick(s.name)}
+                    />
+                    <div className="sb-modal-subsystem-body">
+                      <div className="sb-modal-subsystem-name">
+                        {s.name}
+                        {typeof s.importance === 'number' && (
+                          <span className="sb-modal-subsystem-weight">
+                            {Math.round(s.importance * 100)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="sb-modal-subsystem-purpose">{s.purpose}</div>
+                      <div className="sb-modal-subsystem-paths">
+                        {s.paths.join(', ')}
+                        {typeof s.fileCount === 'number' &&
+                          ` · ${s.fileCount} files`}
+                      </div>
                     </div>
-                    <div className="sb-modal-subsystem-purpose">{s.purpose}</div>
-                    <div className="sb-modal-subsystem-paths">
-                      {s.paths.join(', ')}
-                      {typeof s.fileCount === 'number' &&
-                        ` · ${s.fileCount} files`}
-                    </div>
-                  </div>
-                </label>
-              ))}
+                  </label>
+                ))}
+              </div>
             </div>
-          </div>
+
+            <div className="sb-modal-section">
+              <div className="sb-modal-section-label">
+                Depth · ~{Math.round(15 + depth * 35)} files per subsystem
+              </div>
+              <div className="sb-modal-slider">
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={depth}
+                  onChange={(e) => setDepth(Number(e.target.value))}
+                />
+                <div className="sb-modal-slider-ticks">
+                  <span>Brief</span>
+                  <span>Standard</span>
+                  <span>Detailed</span>
+                </div>
+              </div>
+            </div>
+          </>
         )}
 
         {kind === 'walkthrough' && (
