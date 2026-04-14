@@ -94,14 +94,19 @@ export const flowDiagramTemplate: Template = {
       groupColor.set(g.id, parseColor(resolveColor(g.color)));
     }
 
+    // Soft cap on graph complexity — the Producer sometimes hands us 20+ nodes
+    // with dense edges, which becomes an unreadable ball of lines. Keep the
+    // highest-degree nodes and drop the rest (with their edges).
+    const { nodes: trimmedNodes, edges: trimmedEdges } = trimGraph(nodes, edges, 12);
+
     // Compute node positions based on layout.
-    const positions = computeLayout(nodes, edges, layout);
+    const positions = computeLayout(trimmedNodes, trimmedEdges, layout);
 
     // Build nodes — rounded box meshes + CSS2D labels.
     const nodeObjs = new Map<string, THREE.Group>();
     const nodeItems: Stage3DItem[] = [];
 
-    nodes.forEach((n, i) => {
+    trimmedNodes.forEach((n, i) => {
       const color = n.group ? groupColor.get(n.group) ?? 0x334155 : 0x334155;
       const group = buildNode(n.label, color, n.icon);
       const pos = positions[i];
@@ -122,7 +127,7 @@ export const flowDiagramTemplate: Template = {
     // Build edges — tube lines from source to target with optional label.
     const edgeItems: Stage3DItem[] = [];
     const edgeObjs: THREE.Object3D[] = [];
-    edges.forEach((e) => {
+    trimmedEdges.forEach((e) => {
       const a = nodeObjs.get(e.from);
       const b = nodeObjs.get(e.to);
       if (!a || !b) return;
@@ -131,6 +136,41 @@ export const flowDiagramTemplate: Template = {
       edgeObjs.push(line);
       edgeItems.push({ object: line });
     });
+
+    // Fit-to-frame: the Producer's layouts often exceed the camera frustum
+    // (20×11 world units at z=0). Compute the graph's bounding box from node
+    // positions + node footprint, then apply a uniform world-scale offset so
+    // the whole diagram stays on screen with some padding. We apply this by
+    // scaling each node's position + shrinking node scale target, so edges
+    // (which read positions at build time, already baked in) rescale too
+    // when we rebuild their geometry here.
+    const fit = computeFitScale(positions);
+    if (fit < 1) {
+      // Rescale node positions.
+      trimmedNodes.forEach((_, i) => {
+        positions[i].x *= fit;
+        positions[i].y *= fit;
+        const g = nodeItems[i].object as THREE.Group;
+        g.position.set(positions[i].x, positions[i].y, 0);
+        // Also shrink target scale so big nodes don't crowd tight layouts.
+        (g.userData as { targetScale: number }).targetScale = fit;
+        nodeItems[i].update = makeScaleIn(g, fit, 500);
+      });
+      // Rebuild edges against the rescaled endpoints.
+      edgeObjs.forEach((obj, i) => {
+        const e = trimmedEdges[i];
+        const fromIdx = trimmedNodes.findIndex((n) => n.id === e.from);
+        const toIdx = trimmedNodes.findIndex((n) => n.id === e.to);
+        if (fromIdx < 0 || toIdx < 0) return;
+        const a = new THREE.Vector3(positions[fromIdx].x, positions[fromIdx].y, 0);
+        const b = new THREE.Vector3(positions[toIdx].x, positions[toIdx].y, 0);
+        const rebuilt = buildEdge(a, b, e.label);
+        rebuilt.visible = false;
+        // Swap the item's object so add/remove still works.
+        edgeItems[i].object = rebuilt;
+        edgeObjs[i] = rebuilt;
+      });
+    }
 
     // Stagger entrance.
     const timeouts: ReturnType<typeof setTimeout>[] = [];
@@ -142,9 +182,9 @@ export const flowDiagramTemplate: Template = {
     });
 
     // Edges appear after their slower endpoint has had time to enter.
-    edges.forEach((e, i) => {
-      const fromIdx = nodes.findIndex((n) => n.id === e.from);
-      const toIdx = nodes.findIndex((n) => n.id === e.to);
+    trimmedEdges.forEach((e, i) => {
+      const fromIdx = trimmedNodes.findIndex((n) => n.id === e.from);
+      const toIdx = trimmedNodes.findIndex((n) => n.id === e.to);
       const later = Math.max(fromIdx, toIdx);
       const delay = later * staggerMs + 400;
       const tid = setTimeout(() => {
@@ -215,8 +255,9 @@ export const flowDiagramTemplate: Template = {
 function buildNode(label: string, color: number, icon?: string): THREE.Group {
   const group = new THREE.Group();
 
-  // Box — flat and wide, more "card" than "cube".
-  const geometry = new THREE.BoxGeometry(2.6, 1.1, 0.25);
+  // Box — flat and wide, more "card" than "cube". Kept modest so dense
+  // graphs (10+ nodes) don't push off-screen at the camera's default z=12.
+  const geometry = new THREE.BoxGeometry(2.0, 0.85, 0.2);
   const material = new THREE.MeshStandardMaterial({
     color,
     roughness: 0.55,
@@ -311,7 +352,7 @@ function computeLayout(
   if (layout === 'radial') {
     return nodes.map((_, i) => {
       const angle = (i / n) * Math.PI * 2 - Math.PI / 2;
-      const r = Math.max(3, n * 0.7);
+      const r = Math.max(2.4, n * 0.55);
       return { x: Math.cos(angle) * r, y: Math.sin(angle) * r };
     });
   }
@@ -325,8 +366,8 @@ function computeLayout(
 
   const positions: Record<string, { x: number; y: number }> = {};
   const horizontal = layout === 'left-to-right';
-  const primarySpacing = 3.6; // between ranks
-  const crossSpacing = 1.8;   // within a rank
+  const primarySpacing = 2.8; // between ranks
+  const crossSpacing = 1.4;   // within a rank
 
   buckets.forEach((bucket, r) => {
     const count = bucket.length;
@@ -370,6 +411,67 @@ function computeRanks(nodes: NodeSpec[], edges: EdgeSpec[]): number[] {
     if (!changed) break;
   }
   return rank;
+}
+
+/**
+ * Drop low-degree nodes (and any edges touching them) when the graph is
+ * larger than `maxNodes`. We rank nodes by edge degree so the hubs stay —
+ * those are usually the ones worth showing. Pure nodes (no edges) are the
+ * first to go.
+ */
+function trimGraph(
+  nodes: NodeSpec[],
+  edges: EdgeSpec[],
+  maxNodes: number
+): { nodes: NodeSpec[]; edges: EdgeSpec[] } {
+  if (nodes.length <= maxNodes) return { nodes, edges };
+  const degree = new Map<string, number>();
+  for (const n of nodes) degree.set(n.id, 0);
+  for (const e of edges) {
+    degree.set(e.from, (degree.get(e.from) ?? 0) + 1);
+    degree.set(e.to, (degree.get(e.to) ?? 0) + 1);
+  }
+  const kept = new Set(
+    [...nodes]
+      .sort((a, b) => (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0))
+      .slice(0, maxNodes)
+      .map((n) => n.id)
+  );
+  return {
+    nodes: nodes.filter((n) => kept.has(n.id)),
+    edges: edges.filter((e) => kept.has(e.from) && kept.has(e.to)),
+  };
+}
+
+/**
+ * Compute a uniform scale factor that fits the node positions + their
+ * footprint into a safe portion of the camera frustum. Camera is at z=12 with
+ * fov=50° → visible plane at z=0 is ~11.2 tall; we use 90% of that. Width is
+ * derived from the runtime aspect ratio (assumed ~16:9 worst case). Returns
+ * 1.0 when no scaling is needed.
+ */
+function computeFitScale(positions: Array<{ x: number; y: number }>): number {
+  if (positions.length === 0) return 1;
+  // Include half a node footprint in the bounds so node edges don't clip.
+  const halfW = 1.0 + 0.3; // node half-width + padding
+  const halfH = 0.425 + 0.3;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const p of positions) {
+    minX = Math.min(minX, p.x - halfW);
+    maxX = Math.max(maxX, p.x + halfW);
+    minY = Math.min(minY, p.y - halfH);
+    maxY = Math.max(maxY, p.y + halfH);
+  }
+  const spanX = maxX - minX;
+  const spanY = maxY - minY;
+  // Safe stage: 90% of visible plane at z=0. Assume 16:9 aspect for width.
+  const safeH = 11.2 * 0.9;
+  const safeW = safeH * (16 / 9);
+  const scale = Math.min(safeW / spanX, safeH / spanY, 1);
+  return scale;
 }
 
 /** Scale an object from its current scale to target over `durationMs`. */
