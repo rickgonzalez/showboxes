@@ -31,7 +31,10 @@ type Stage = 'idle' | 'triaging' | 'analyzing' | 'scripting';
 type Tab = 'none' | 'analysis' | 'script' | 'settings';
 
 interface PipelinePanelProps {
-  onPlayScript: (script: PresentationScript) => void;
+  onPlayScript: (
+    script: PresentationScript,
+    meta?: { scriptId?: string | null; analysisId?: string | null },
+  ) => void;
   canPlay: boolean;
 }
 
@@ -254,7 +257,12 @@ export function PipelinePanel({ onPlayScript, canPlay }: PipelinePanelProps) {
   };
 
   const play = () => {
-    if (script) onPlayScript(script);
+    if (script) {
+      onPlayScript(script, {
+        scriptId: selectedScriptId,
+        analysisId: selectedId,
+      });
+    }
   };
 
   const forgetCache = () => {

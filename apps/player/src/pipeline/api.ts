@@ -181,6 +181,32 @@ export async function getScript(id: string): Promise<ScriptRecord> {
   return (await res.json()) as ScriptRecord;
 }
 
+export interface PostNoteInput {
+  scriptId: string | null;
+  scriptLabel: string | null;
+  analysisId: string | null;
+  repoUrl: string | null;
+  sceneIndex: number;
+  sceneId: string;
+  sceneTemplate: string;
+  note: string;
+}
+
+/** Save a reviewer flag/note against the current scene. */
+export async function postNote(
+  input: PostNoteInput,
+): Promise<{ id: string; createdAt: string }> {
+  const res = await fetch(api('/api/notes'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(`note failed: ${res.status} ${await res.text()}`);
+  }
+  return (await res.json()) as { id: string; createdAt: string };
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }

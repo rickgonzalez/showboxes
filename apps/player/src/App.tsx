@@ -12,6 +12,7 @@ import {
   type VoicePlayer,
 } from './player';
 import { PipelinePanel } from './pipeline/PipelinePanel';
+import { postNote } from './pipeline/api';
 
 /**
  * Demo host for the showboxes service layer. This page is the human-facing
@@ -45,6 +46,16 @@ export function App() {
   const [loadedScript, setLoadedScript] = useState<string | null>(null);
   const [audioOn, setAudioOn] = useState(false);
   const [wpm, setWpm] = useState(150);
+  // Context needed when the user flags a scene — populated whenever a
+  // script loads. Sample scripts have null ids; pipeline scripts carry both.
+  const currentScriptRef = useRef<PresentationScript | null>(null);
+  const currentScriptIdRef = useRef<string | null>(null);
+  const currentAnalysisIdRef = useRef<string | null>(null);
+  const [flagOpen, setFlagOpen] = useState(false);
+  const [flagText, setFlagText] = useState('');
+  const [flagSaving, setFlagSaving] = useState(false);
+  const [flagError, setFlagError] = useState<string | null>(null);
+  const [flagSaved, setFlagSaved] = useState<string | null>(null);
 
   const handleReady = useCallback((presenter: Presenter) => {
     presenterRef.current = presenter;
@@ -65,7 +76,11 @@ export function App() {
   };
 
   const loadScriptObject = useCallback(
-    (script: PresentationScript, label: string) => {
+    (
+      script: PresentationScript,
+      label: string,
+      meta?: { scriptId?: string | null; analysisId?: string | null },
+    ) => {
       const p = presenterRef.current;
       if (!p) return;
       teardownPlayer();
@@ -80,6 +95,9 @@ export function App() {
         onStateChange: setPlayerState,
       });
       playerRef.current = player;
+      currentScriptRef.current = script;
+      currentScriptIdRef.current = meta?.scriptId ?? null;
+      currentAnalysisIdRef.current = meta?.analysisId ?? null;
       setLoadedScript(label);
       setScenePos({ index: 0, total: script.scenes.length, id: script.scenes[0]?.id ?? '' });
     },
@@ -88,6 +106,50 @@ export function App() {
 
   const loadScript = (key: keyof typeof sampleScripts) => {
     loadScriptObject(sampleScripts[key], key);
+  };
+
+  const openFlag = () => {
+    if (!loadedScript) return;
+    playerRef.current?.pause();
+    setFlagText('');
+    setFlagError(null);
+    setFlagSaved(null);
+    setFlagOpen(true);
+  };
+
+  const submitFlag = async () => {
+    const script = currentScriptRef.current;
+    if (!script) return;
+    const text = flagText.trim();
+    if (!text) {
+      setFlagError('note is required');
+      return;
+    }
+    const scene = script.scenes[scenePos.index];
+    if (!scene) {
+      setFlagError('no active scene');
+      return;
+    }
+    setFlagSaving(true);
+    setFlagError(null);
+    try {
+      const saved = await postNote({
+        scriptId: currentScriptIdRef.current,
+        scriptLabel: loadedScript,
+        analysisId: currentAnalysisIdRef.current,
+        repoUrl: script.meta?.repoUrl ?? null,
+        sceneIndex: scenePos.index,
+        sceneId: scene.id,
+        sceneTemplate: scene.primitive?.template ?? 'unknown',
+        note: text,
+      });
+      setFlagSaved(saved.id);
+      setFlagOpen(false);
+    } catch (e) {
+      setFlagError((e as Error).message);
+    } finally {
+      setFlagSaving(false);
+    }
   };
 
   const playerPlay = () => playerRef.current?.play();
@@ -573,6 +635,18 @@ export function App() {
           <button disabled={!loadedScript} onClick={playerStop}>
             stop
           </button>
+          <button
+            disabled={!loadedScript}
+            onClick={openFlag}
+            title="Pause and capture a note about the current scene."
+          >
+            🚩 flag
+          </button>
+          {flagSaved && (
+            <span className="sb-toolbar-label" style={{ color: '#6ee7b7' }}>
+              note saved
+            </span>
+          )}
           {loadedScript && (
             <span className="sb-toolbar-label">
               [{loadedScript}] {scenePos.index + 1}/{scenePos.total} · {scenePos.id} ·{' '}
@@ -586,11 +660,67 @@ export function App() {
       </header>
       <PipelinePanel
         canPlay={ready}
-        onPlayScript={(s) => loadScriptObject(s, 'pipeline')}
+        onPlayScript={(s, meta) => loadScriptObject(s, 'pipeline', meta)}
       />
       <main className="sb-stage-host">
         <Presentation onReady={handleReady} />
       </main>
+      {flagOpen && (
+        <div className="sb-flag-backdrop" onClick={() => !flagSaving && setFlagOpen(false)}>
+          <div className="sb-flag-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="sb-flag-title">🚩 Flag this scene</div>
+            <div className="sb-flag-context">
+              <div>
+                <span className="sb-flag-key">script:</span> {loadedScript ?? '—'}
+              </div>
+              <div>
+                <span className="sb-flag-key">scene:</span> {scenePos.index + 1}/
+                {scenePos.total} · {scenePos.id}
+              </div>
+              <div>
+                <span className="sb-flag-key">template:</span>{' '}
+                {currentScriptRef.current?.scenes[scenePos.index]?.primitive?.template ??
+                  'unknown'}
+              </div>
+              {currentScriptIdRef.current && (
+                <div>
+                  <span className="sb-flag-key">scriptId:</span>{' '}
+                  {currentScriptIdRef.current}
+                </div>
+              )}
+              {currentAnalysisIdRef.current && (
+                <div>
+                  <span className="sb-flag-key">analysisId:</span>{' '}
+                  {currentAnalysisIdRef.current}
+                </div>
+              )}
+            </div>
+            <textarea
+              className="sb-flag-textarea"
+              placeholder="What's wrong? (e.g. 'word too small', 'nothing rendered', 'text cut off')"
+              autoFocus
+              value={flagText}
+              onChange={(e) => setFlagText(e.target.value)}
+              rows={5}
+            />
+            {flagError && <div className="sb-flag-error">{flagError}</div>}
+            <div className="sb-flag-actions">
+              <button
+                disabled={flagSaving}
+                onClick={() => setFlagOpen(false)}
+              >
+                cancel
+              </button>
+              <button
+                disabled={flagSaving || !flagText.trim()}
+                onClick={submitFlag}
+              >
+                {flagSaving ? 'saving…' : 'save note'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

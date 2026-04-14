@@ -63,6 +63,28 @@ model Script {
   @@index([createdAt])
 }
 
+// One row per note/flag captured by a reviewer while watching a script
+// play back. Notes are advisory and not FK-linked — they survive script
+// deletion. Captured from the player's "flag" button, which pauses the
+// scene and records enough context to find it again in pgAdmin or a
+// future review UI. No elapsed/time is captured in v1 — scene index + id
+// has been enough to locate issues so far.
+model ScriptNote {
+  id             String   @id @default(cuid())
+  scriptId       String?  // advisory FK to Script.id (null for sample scripts)
+  scriptLabel    String?  // denormalized Script.label or sample key
+  analysisId     String?  // advisory FK to Analysis.id
+  repoUrl        String?
+  sceneIndex     Int
+  sceneId        String
+  sceneTemplate  String
+  note           String   @db.Text
+  createdAt      DateTime @default(now())
+
+  @@index([scriptId])
+  @@index([createdAt])
+}
+
 // One row per Managed Agents environment we provision. Typically just
 // one environment per deployment (dev / staging / prod), seeded on first
 // boot. The gnome's externalId is stored per-agent elsewhere — this
