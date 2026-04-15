@@ -192,6 +192,50 @@ export const dataPipelineTemplate: Template = {
       '{ operation, label, result, highlight?, display? }[] — transformation stages (2–5)',
     staggerMs: 'number — delay between stage reveals (default 1500)',
   },
+  demo: {
+    label: 'Data Pipeline',
+    content: {
+      title: 'Checkout math',
+      input: {
+        label: 'Line Items',
+        display: 'table',
+        data: [
+          { sku: 'A1', qty: 2, price: 12 },
+          { sku: 'B3', qty: 1, price: 30 },
+          { sku: 'C7', qty: 3, price: 5 },
+        ],
+      },
+      stages: [
+        {
+          operation: 'map → qty × price',
+          label: 'Line totals',
+          display: 'table',
+          highlight: 'total',
+          result: [
+            { sku: 'A1', qty: 2, price: 12, total: 24 },
+            { sku: 'B3', qty: 1, price: 30, total: 30 },
+            { sku: 'C7', qty: 3, price: 5, total: 15 },
+          ],
+        },
+        {
+          operation: 'reduce → sum(total)',
+          label: 'Subtotal',
+          display: 'value',
+          highlight: 'subtotal',
+          result: { subtotal: 69 },
+        },
+        {
+          operation: 'apply discount + tax',
+          label: 'Grand total',
+          display: 'breakdown',
+          highlight: 'total',
+          result: { subtotal: 69, discount: -5, tax: 5.76, total: 69.76 },
+        },
+      ],
+      staggerMs: 1400,
+    },
+    emphasizeAfter: { target: '2', delayMs: 4600 },
+  },
 
   render(presenter, contentIn): TemplateHandle {
     const c = contentIn as unknown as DataPipelineContent;

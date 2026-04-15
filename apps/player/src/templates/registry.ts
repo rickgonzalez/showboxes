@@ -14,6 +14,15 @@ import type { Presenter } from '../service/presenter';
 
 export type TemplateContent = Record<string, unknown>;
 
+export interface TemplateDemo {
+  /** Human label for the dropdown (e.g. "Flow Diagram"). */
+  label: string;
+  /** Content payload to feed to the template's render(). */
+  content: TemplateContent;
+  /** Optional emphasize call scheduled after the template mounts. */
+  emphasizeAfter?: { target: string; delayMs: number };
+}
+
 export interface Template {
   id: string;
   description: string;
@@ -23,6 +32,11 @@ export interface Template {
    * this template takes.
    */
   slots?: Record<string, string>;
+  /**
+   * Optional hand-picked sample payload the demo UI can play back so every
+   * template is exercisable without custom button wiring.
+   */
+  demo?: TemplateDemo;
   render(presenter: Presenter, content: TemplateContent): TemplateHandle;
 }
 
@@ -43,10 +57,6 @@ export function getTemplate(id: string): Template | undefined {
   return templates.get(id);
 }
 
-export function listTemplates(): Array<{ id: string; description: string; slots?: Record<string, string> }> {
-  return Array.from(templates.values()).map((t) => ({
-    id: t.id,
-    description: t.description,
-    slots: t.slots,
-  }));
+export function listTemplates(): Template[] {
+  return Array.from(templates.values());
 }

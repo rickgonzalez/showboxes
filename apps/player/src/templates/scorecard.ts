@@ -60,6 +60,22 @@ export const scorecardTemplate: Template = {
     overallGrade: 'string — overall letter grade (A through F)',
     items: '{ label, grade, note }[] — individual scored metrics (3–8)',
   },
+  demo: {
+    label: 'Scorecard',
+    content: {
+      title: 'Codebase report card',
+      overallGrade: 'C+',
+      items: [
+        { label: 'Architecture', grade: 'B+', note: 'Clean layering, clear seams.' },
+        { label: 'Testing', grade: 'F', note: 'No tests at all.' },
+        { label: 'Security', grade: 'C-', note: 'JWTs are not signature-verified.' },
+        { label: 'Docs', grade: 'B', note: 'README + inline is solid.' },
+        { label: 'Performance', grade: 'A-', note: 'Async, cached, indexed.' },
+        { label: 'Dependencies', grade: 'C', note: '2 majors behind latest.' },
+      ],
+    },
+    emphasizeAfter: { target: '1', delayMs: 2400 },
+  },
 
   render(presenter, contentIn): TemplateHandle {
     const c = contentIn as unknown as ScorecardContent;

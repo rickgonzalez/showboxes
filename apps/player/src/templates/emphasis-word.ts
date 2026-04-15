@@ -35,6 +35,19 @@ export const emphasisWordTemplate: Template = {
     fx: 'EffectSpec[] — entrance effects (defaults to slam + glow)',
     style: '{ size?: number, weight?: string, color?: string } — optional overrides',
   },
+  demo: {
+    label: 'Emphasis Word',
+    content: {
+      word: 'FRAGILE',
+      subtitle: 'This codebase has no tests and 3 god functions over 500 lines each.',
+      fx: [
+        { name: 'slam', duration: 520 },
+        { name: 'glow', duration: 1400, strength: 48, color: '#ff6b6b' },
+        { name: 'shake', duration: 400, intensity: 8 },
+      ],
+      style: { size: 120, weight: '900', color: '#ff6b6b' },
+    },
+  },
   render(presenter, contentIn) {
     const content = contentIn as unknown as EmphasisWordContent;
     const {

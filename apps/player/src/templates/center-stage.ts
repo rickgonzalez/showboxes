@@ -40,6 +40,23 @@ export const centerStageTemplate: Template = {
     orbitSpeed: 'number — radians/frame for slow rotation (default 0 = static)',
     centerFx: 'EffectSpec[] — entrance effects for the center word',
   },
+  demo: {
+    label: 'Center Stage',
+    content: {
+      center: { text: 'Presenter', size: 72 },
+      orbiting: [
+        { text: 'Stage', weight: 0.9 },
+        { text: 'TextBox', weight: 0.8 },
+        { text: 'fx registry', weight: 0.7 },
+        { text: 'Templates', weight: 0.85 },
+        { text: 'DOM Layer', weight: 0.6 },
+        { text: 'Stage3D', weight: 0.3 },
+      ],
+      staggerMs: 200,
+      orbitSpeed: 0.003,
+    },
+    emphasizeAfter: { target: 'Templates', delayMs: 3000 },
+  },
   render(presenter, contentIn) {
     const content = contentIn as unknown as CenterStageContent;
     const {

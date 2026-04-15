@@ -57,6 +57,29 @@ export const sequenceDiagramTemplate: Template = {
     steps: '{ from, to, label, kind: "request"|"response"|"self"|"note" }[]',
     staggerMs: 'number — delay between arrow reveals (default 700)',
   },
+  demo: {
+    label: 'Sequence Diagram',
+    content: {
+      title: 'Login request',
+      actors: [
+        { id: 'user', label: 'User', icon: '👤' },
+        { id: 'api', label: 'API', icon: '⚙' },
+        { id: 'auth', label: 'Auth', icon: '🛡' },
+        { id: 'db', label: 'DB', icon: '💾' },
+      ],
+      steps: [
+        { from: 'user', to: 'api', label: 'POST /login', kind: 'request' },
+        { from: 'api', to: 'auth', label: 'verify(password)', kind: 'request' },
+        { from: 'auth', to: 'db', label: 'SELECT user', kind: 'request' },
+        { from: 'db', to: 'auth', label: 'row', kind: 'response' },
+        { from: 'auth', to: 'api', label: '✓ valid', kind: 'response' },
+        { from: 'api', to: 'api', label: 'sign JWT', kind: 'self' },
+        { from: 'api', to: 'user', label: '200 + token', kind: 'response' },
+      ],
+      staggerMs: 700,
+    },
+    emphasizeAfter: { target: '5', delayMs: 6200 },
+  },
   render(presenter, contentIn) {
     const content = contentIn as unknown as SequenceDiagramContent;
     const { title, actors = [], steps = [], staggerMs = 700 } = content;

@@ -49,6 +49,48 @@ export const transformGridTemplate: Template = {
     staggerMs: 'number — delay between stage reveals (default 600)',
     connector: '"arrow" | "chevron" | "fade"',
   },
+  demo: {
+    label: 'Transform Grid',
+    content: {
+      title: 'How a request becomes a response',
+      stages: [
+        {
+          label: 'Raw Request',
+          display: {
+            type: 'code',
+            code: 'POST /api/login\n{email, password}',
+            language: 'http',
+          },
+        },
+        {
+          label: 'Validated',
+          display: {
+            type: 'code',
+            code: "{ email: 'rick@...',\n  password: '••••' }",
+            language: 'json',
+          },
+        },
+        {
+          label: 'Authenticated',
+          display: {
+            type: 'text',
+            text: '✓ Credentials match\n→ Generate JWT',
+          },
+        },
+        {
+          label: 'Response',
+          display: {
+            type: 'code',
+            code: "200 OK\n{ token: 'eyJhbG...' }",
+            language: 'http',
+          },
+        },
+      ],
+      staggerMs: 600,
+      connector: 'arrow',
+    },
+    emphasizeAfter: { target: '2', delayMs: 3200 },
+  },
   render(presenter, contentIn) {
     const content = contentIn as unknown as TransformGridContent;
     const {

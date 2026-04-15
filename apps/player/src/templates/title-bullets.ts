@@ -26,6 +26,20 @@ export const titleBulletsTemplate: Template = {
     bullets: 'string[] — list items, rendered in DOM',
     titleFx: 'EffectSpec[] — optional entrance effects for the title',
   },
+  demo: {
+    label: 'Title + Bullets',
+    content: {
+      title: 'Why blitting matters',
+      bullets: [
+        'Rasterize once into an offscreen canvas.',
+        'drawImage the cached bitmap every frame.',
+        'Animated transforms are free — no re-rasterization.',
+        'The cache only rebuilds when text or style changes.',
+      ],
+      titleFx: [{ name: 'slam', duration: 600 }],
+    },
+    emphasizeAfter: { target: '1', delayMs: 1800 },
+  },
   render(presenter, contentIn) {
     const content = contentIn as unknown as TitleBulletsContent;
     const { title, bullets = [], titleFx = [{ name: 'slam', duration: 600 }] } = content;

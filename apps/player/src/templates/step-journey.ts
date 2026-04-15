@@ -54,6 +54,21 @@ export const stepJourneyTemplate: Template = {
     activeColor: 'string — CSS color for lit-up steps (default palette.primary)',
     staggerMs: 'number — delay between step reveals (default 1000)',
   },
+  demo: {
+    label: 'Step Journey',
+    content: {
+      title: 'From sign-up to first value',
+      steps: [
+        { icon: '👋', label: 'Land on site', detail: 'Hero + one CTA' },
+        { icon: '📝', label: 'Sign up', detail: 'Email + password' },
+        { icon: '✉️', label: 'Verify email', detail: 'Click the link' },
+        { icon: '⚙️', label: 'Configure', detail: 'Pick a template' },
+        { icon: '🎉', label: 'First win', detail: 'Presentation plays' },
+      ],
+      staggerMs: 900,
+    },
+    emphasizeAfter: { target: '4', delayMs: 5200 },
+  },
 
   render(presenter, contentIn): TemplateHandle {
     const c = contentIn as unknown as StepJourneyContent;

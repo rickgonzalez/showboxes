@@ -40,6 +40,24 @@ export const codeZoomTemplate: Template = {
     highlight: 'number[] — 1-based line numbers to pre-highlight',
     startScale: 'number — initial zoom scale (default 0.15)',
   },
+  demo: {
+    label: 'Code Zoom',
+    content: {
+      code: `function showTextBox(opts) {
+  const box = new TextBox(opts.text, opts.style);
+  box.x = opts.x ?? stage.width / 2;
+  box.y = opts.y ?? stage.height / 2;
+  stage.add(box);
+  for (const spec of opts.fx ?? []) {
+    applyFx(box, spec);
+  }
+  return box;
+}`,
+      language: 'javascript',
+      highlight: [5],
+    },
+    emphasizeAfter: { target: '6', delayMs: 1600 },
+  },
   render(presenter, contentIn) {
     const content = contentIn as unknown as CodeZoomContent;
     const {

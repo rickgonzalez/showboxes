@@ -37,4 +37,4 @@ registerTemplate(compareSplitTemplate);
 registerTemplate(directoryTreeTemplate);
 
 export { registerTemplate, getTemplate, listTemplates } from './registry';
-export type { Template, TemplateContent, TemplateHandle } from './registry';
+export type { Template, TemplateContent, TemplateHandle, TemplateDemo } from './registry';

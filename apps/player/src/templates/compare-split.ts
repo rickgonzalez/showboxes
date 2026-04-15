@@ -60,6 +60,35 @@ export const compareSplitTemplate: Template = {
     divider: '"vs" | "or" | "→" | "none" (default "vs")',
     staggerMs: 'number — delay between reveals (default 400)',
   },
+  demo: {
+    label: 'Compare Split',
+    content: {
+      title: 'Two Ways to Use It',
+      left: {
+        heading: 'Tag Mode',
+        icon: '💬',
+        bullets: [
+          'Interactive: @claude in comments',
+          'Full PR context',
+          'Can push commits',
+        ],
+        accent: 'palette.primary',
+      },
+      right: {
+        heading: 'Agent Mode',
+        icon: '🤖',
+        bullets: [
+          'Automated: custom prompts',
+          'Scheduled tasks',
+          'Structured output',
+        ],
+        accent: 'palette.secondary',
+      },
+      divider: 'vs',
+      staggerMs: 400,
+    },
+    emphasizeAfter: { target: 'right', delayMs: 2200 },
+  },
   render(presenter, contentIn) {
     const content = contentIn as unknown as CompareSplitContent;
     const {

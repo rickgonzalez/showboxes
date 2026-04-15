@@ -82,6 +82,19 @@ button:disabled {
   margin-right: 4px;
 }
 
+.sb-template-select {
+  font: inherit;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+}
+
+.sb-template-select:disabled {
+  opacity: 0.5;
+}
+
 .sb-stage-host {
   flex: 1;
   position: relative;

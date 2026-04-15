@@ -65,6 +65,31 @@ export const flowDiagramTemplate: Template = {
     layout: '"left-to-right" | "top-to-bottom" | "radial"',
     orbit: 'boolean — whether the camera slowly orbits (default true)',
   },
+  demo: {
+    label: 'Flow Diagram',
+    content: {
+      nodes: [
+        { id: 'client', label: 'Browser', icon: '🖥', group: 'frontend' },
+        { id: 'api', label: 'API Server', icon: '⚙', group: 'backend' },
+        { id: 'auth', label: 'Auth Service', icon: '🛡', group: 'backend' },
+        { id: 'db', label: 'PostgreSQL', icon: '💾', group: 'data' },
+      ],
+      edges: [
+        { from: 'client', to: 'api', label: 'REST' },
+        { from: 'api', to: 'auth', label: 'verify token' },
+        { from: 'api', to: 'db', label: 'queries' },
+      ],
+      groups: [
+        { id: 'frontend', label: 'Frontend', color: 'palette.primary' },
+        { id: 'backend', label: 'Backend', color: 'palette.secondary' },
+        { id: 'data', label: 'Data Layer', color: 'palette.accent' },
+      ],
+      staggerMs: 300,
+      layout: 'left-to-right',
+      orbit: true,
+    },
+    emphasizeAfter: { target: 'auth', delayMs: 3000 },
+  },
   render(presenter, contentIn) {
     const content = contentIn as unknown as FlowDiagramContent;
     const {
@@ -99,8 +124,32 @@ export const flowDiagramTemplate: Template = {
     // highest-degree nodes and drop the rest (with their edges).
     const { nodes: trimmedNodes, edges: trimmedEdges } = trimGraph(nodes, edges, 12);
 
-    // Compute node positions based on layout.
-    const positions = computeLayout(trimmedNodes, trimmedEdges, layout);
+    // Figure out the actual viewport aspect so we can (a) fit properly and
+    // (b) flip orientation when the Producer picked one that fights the frame.
+    // Stage3D may not have synced size yet on first tick — fall back to 16:9.
+    const viewW = stage.width > 0 ? stage.width : 16;
+    const viewH = stage.height > 0 ? stage.height : 9;
+    const aspect = viewW / viewH;
+
+    // Orientation auto-correction: for deep graphs (many ranks, narrow per
+    // rank) in a wide viewport, vertical stacks clip top/bottom while wasting
+    // horizontal room. Flip when the chosen axis clearly disagrees with the
+    // frame. Radial stays as-is.
+    let effectiveLayout = layout;
+    if (layout !== 'radial') {
+      const ranks = computeRanks(trimmedNodes, trimmedEdges);
+      const rankCount = Math.max(0, ...ranks) + 1;
+      const widest = maxBucketSize(ranks);
+      // Ratio of "along-flow" to "cross-flow" that the graph wants.
+      const graphRatio = rankCount / Math.max(1, widest);
+      // If graph wants to be long-and-thin and the frame is wide, prefer LTR.
+      // If graph wants to be tall-and-thin and the frame is tall, prefer TTB.
+      if (aspect >= 1.2 && graphRatio > 1.1) effectiveLayout = 'left-to-right';
+      else if (aspect < 0.9 && graphRatio > 1.1) effectiveLayout = 'top-to-bottom';
+    }
+
+    // Compute node positions based on (possibly overridden) layout.
+    const positions = computeLayout(trimmedNodes, trimmedEdges, effectiveLayout);
 
     // Build nodes — rounded box meshes + CSS2D labels.
     const nodeObjs = new Map<string, THREE.Group>();
@@ -144,7 +193,7 @@ export const flowDiagramTemplate: Template = {
     // scaling each node's position + shrinking node scale target, so edges
     // (which read positions at build time, already baked in) rescale too
     // when we rebuild their geometry here.
-    const fit = computeFitScale(positions);
+    const fit = computeFitScale(positions, aspect);
     if (fit < 1) {
       // Rescale node positions.
       trimmedNodes.forEach((_, i) => {
@@ -157,7 +206,7 @@ export const flowDiagramTemplate: Template = {
         nodeItems[i].update = makeScaleIn(g, fit, 500);
       });
       // Rebuild edges against the rescaled endpoints.
-      edgeObjs.forEach((obj, i) => {
+      edgeObjs.forEach((_obj, i) => {
         const e = trimmedEdges[i];
         const fromIdx = trimmedNodes.findIndex((n) => n.id === e.from);
         const toIdx = trimmedNodes.findIndex((n) => n.id === e.to);
@@ -366,8 +415,13 @@ function computeLayout(
 
   const positions: Record<string, { x: number; y: number }> = {};
   const horizontal = layout === 'left-to-right';
-  const primarySpacing = 2.8; // between ranks
-  const crossSpacing = 1.4;   // within a rank
+  // Node footprint is 2.0 × 0.85. "primary" is along the flow axis, "cross"
+  // is perpendicular. Label text lives inside 2.0-wide boxes, so horizontal
+  // neighbours need ≥ node-width + gap to stay readable. Previously primary
+  // was 2.8 (only 0.8 gap between rank centres) — labels overlapped on wide
+  // graphs. Scale cross-spacing by the box's short side too.
+  const primarySpacing = horizontal ? 4.0 : 2.4; // along flow
+  const crossSpacing = horizontal ? 1.8 : 3.2;   // perpendicular
 
   buckets.forEach((bucket, r) => {
     const count = bucket.length;
@@ -450,7 +504,10 @@ function trimGraph(
  * derived from the runtime aspect ratio (assumed ~16:9 worst case). Returns
  * 1.0 when no scaling is needed.
  */
-function computeFitScale(positions: Array<{ x: number; y: number }>): number {
+function computeFitScale(
+  positions: Array<{ x: number; y: number }>,
+  aspect: number
+): number {
   if (positions.length === 0) return 1;
   // Include half a node footprint in the bounds so node edges don't clip.
   const halfW = 1.0 + 0.3; // node half-width + padding
@@ -467,11 +524,20 @@ function computeFitScale(positions: Array<{ x: number; y: number }>): number {
   }
   const spanX = maxX - minX;
   const spanY = maxY - minY;
-  // Safe stage: 90% of visible plane at z=0. Assume 16:9 aspect for width.
-  const safeH = 11.2 * 0.9;
-  const safeW = safeH * (16 / 9);
+  // Camera: fov 50° at z=12 → visible height at z=0 ≈ 11.19. Width derives
+  // from the actual viewport aspect, not a hardcoded 16:9. 90% keeps edges
+  // off the frame.
+  const safeH = 11.19 * 0.9;
+  const safeW = safeH * aspect;
   const scale = Math.min(safeW / spanX, safeH / spanY, 1);
   return scale;
+}
+
+/** Max bucket size when ranks are the keys. */
+function maxBucketSize(ranks: number[]): number {
+  const counts: Record<number, number> = {};
+  for (const r of ranks) counts[r] = (counts[r] ?? 0) + 1;
+  return Math.max(1, ...Object.values(counts));
 }
 
 /** Scale an object from its current scale to target over `durationMs`. */

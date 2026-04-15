@@ -55,6 +55,38 @@ export const directoryTreeTemplate: Template = {
     staggerMs: 'number — per-depth reveal delay (default 200)',
     style: '"tree" | "indented" | "explorer" (default "tree")',
   },
+  demo: {
+    label: 'Directory Tree',
+    content: {
+      root: 'claude-code-action',
+      tree: [
+        {
+          name: 'src/',
+          badge: 'core',
+          children: [
+            { name: 'action/', badge: 'entry', note: 'GitHub Action entry points' },
+            { name: 'mcp/', badge: '4 servers', note: 'MCP tool servers' },
+            {
+              name: 'utils/',
+              children: [
+                { name: 'auth.ts', highlight: true, note: 'Token + OAuth plumbing' },
+                { name: 'graphql.ts' },
+                { name: 'config.ts' },
+              ],
+            },
+          ],
+        },
+        { name: 'tests/', badge: 'unit only' },
+        { name: '.github/', children: [{ name: 'workflows/' }] },
+        { name: 'action.yml', highlight: true, note: 'Action manifest' },
+        { name: 'README.md' },
+      ],
+      maxDepth: 3,
+      staggerMs: 200,
+      style: 'tree',
+    },
+    emphasizeAfter: { target: 'action.yml', delayMs: 2200 },
+  },
   render(presenter, contentIn) {
     const content = contentIn as unknown as DirectoryTreeContent;
     const {

@@ -45,6 +45,20 @@ export const purposeBulletsTemplate: Template = {
     supports: 'SupportItem[] — { point: string, type: feature|detail|concern|strength }',
     purposeFx: 'EffectSpec[] — optional entrance effects for the purpose text',
   },
+  demo: {
+    label: 'Purpose Bullets',
+    content: {
+      purpose: 'Handles user authentication and sessions',
+      fileRef: 'src/services/auth.ts',
+      supports: [
+        { point: 'OAuth2 flow with Google and GitHub providers', type: 'feature' },
+        { point: 'JWT tokens with 24-hour expiry', type: 'detail' },
+        { point: 'No refresh token rotation — sessions die on expiry', type: 'concern' },
+        { point: 'Rate limiting on login attempts (good practice)', type: 'strength' },
+      ],
+    },
+    emphasizeAfter: { target: '2', delayMs: 2200 },
+  },
   render(presenter, contentIn) {
     const content = contentIn as unknown as PurposeBulletsContent;
     const {

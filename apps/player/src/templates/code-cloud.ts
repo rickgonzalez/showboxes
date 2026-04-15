@@ -39,6 +39,32 @@ export const codeCloudTemplate: Template = {
     categoryColors: 'Record<string, string> — category → color (CSS or palette.* alias)',
     entranceStyle: '"scatter" | "spiral" | "typewriter" — how items appear',
   },
+  demo: {
+    label: 'Code Cloud',
+    content: {
+      items: [
+        { text: 'React', weight: 1.0, category: 'framework' },
+        { text: 'Express', weight: 0.9, category: 'framework' },
+        { text: 'useState', weight: 0.85, category: 'pattern' },
+        { text: 'prisma', weight: 0.7, category: 'orm' },
+        { text: 'JWT', weight: 0.6, category: 'auth' },
+        { text: 'WebSocket', weight: 0.4, category: 'transport' },
+        { text: 'Redis', weight: 0.3, category: 'cache' },
+        { text: 'useEffect', weight: 0.75, category: 'pattern' },
+        { text: 'Postgres', weight: 0.65, category: 'orm' },
+      ],
+      categoryColors: {
+        framework: 'palette.primary',
+        pattern: 'palette.secondary',
+        orm: 'palette.accent',
+        auth: '#f59e0b',
+        transport: '#8b5cf6',
+        cache: '#ef4444',
+      },
+      entranceStyle: 'spiral',
+    },
+    emphasizeAfter: { target: 'JWT', delayMs: 2500 },
+  },
   render(presenter, contentIn) {
     const content = contentIn as unknown as CodeCloudContent;
     const {

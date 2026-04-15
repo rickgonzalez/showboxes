@@ -87,6 +87,40 @@ export const entityMapTemplate: Template = {
     staggerMs: 'number — delay between card reveals (default 300)',
     layout: '"grid" | "hierarchical" — layout strategy (default "grid")',
   },
+  demo: {
+    label: 'Entity Map',
+    content: {
+      title: 'Data model at a glance',
+      entities: [
+        { id: 'user', label: 'User', icon: '👤', fields: ['id', 'email', 'name'] },
+        { id: 'org', label: 'Organization', icon: '🏢', fields: ['id', 'name', 'plan'] },
+        {
+          id: 'project',
+          label: 'Project',
+          icon: '📁',
+          fields: ['id', 'name', 'orgId'],
+        },
+        {
+          id: 'presentation',
+          label: 'Presentation',
+          icon: '🎬',
+          fields: ['id', 'projectId', 'script'],
+        },
+      ],
+      relationships: [
+        { from: 'org', to: 'user', label: 'has many', type: 'one-to-many' },
+        { from: 'org', to: 'project', label: 'has many', type: 'one-to-many' },
+        {
+          from: 'project',
+          to: 'presentation',
+          label: 'has many',
+          type: 'one-to-many',
+        },
+      ],
+      staggerMs: 300,
+    },
+    emphasizeAfter: { target: 'project', delayMs: 2800 },
+  },
 
   render(presenter, contentIn): TemplateHandle {
     const c = contentIn as unknown as EntityMapContent;
@@ -137,7 +171,8 @@ export const entityMapTemplate: Template = {
     Object.assign(grid.style, {
       display: 'grid',
       gridTemplateColumns: `repeat(${cols}, 1fr)`,
-      gap: '24px',
+      justifyItems: 'center',
+      gap: '56px 48px',
       padding: '16px',
       position: 'relative',
       zIndex: '2',
@@ -151,8 +186,11 @@ export const entityMapTemplate: Template = {
       Object.assign(card.style, {
         background: '#1e293b',
         borderRadius: '12px',
-        padding: '14px 16px',
+        padding: '12px 14px',
         border: `2px solid ${color}`,
+        width: 'fit-content',
+        maxWidth: '200px',
+        minWidth: '120px',
         opacity: '0',
         transform: 'scale(0.9)',
         transition: 'opacity 400ms ease, transform 400ms ease, box-shadow 300ms ease',
@@ -186,11 +224,13 @@ export const entityMapTemplate: Template = {
       if (entity.fields?.length) {
         const fieldList = document.createElement('div');
         Object.assign(fieldList.style, {
-          fontSize: '11px',
+          fontSize: '10px',
           color: '#94a3b8',
-          lineHeight: '1.6',
+          lineHeight: '1.5',
           fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
           paddingLeft: entity.icon ? '30px' : '0',
+          whiteSpace: 'normal',
+          wordBreak: 'break-word',
         });
         fieldList.textContent = entity.fields.join(', ');
         card.appendChild(fieldList);
