@@ -22,14 +22,22 @@ export function Presentation({ onReady, className }: PresentationProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const domRootRef = useRef<HTMLDivElement | null>(null);
   const stage3dHostRef = useRef<HTMLDivElement | null>(null);
+  const stageRootRef = useRef<HTMLDivElement | null>(null);
   const presenterRef = useRef<Presenter | null>(null);
 
   useEffect(() => {
-    if (!canvasRef.current || !domRootRef.current || !stage3dHostRef.current) return;
+    if (
+      !canvasRef.current ||
+      !domRootRef.current ||
+      !stage3dHostRef.current ||
+      !stageRootRef.current
+    )
+      return;
     const presenter = new Presenter(
       canvasRef.current,
       domRootRef.current,
-      stage3dHostRef.current
+      stage3dHostRef.current,
+      stageRootRef.current
     );
     presenterRef.current = presenter;
     onReady?.(presenter);
@@ -44,7 +52,7 @@ export function Presentation({ onReady, className }: PresentationProps) {
   }, []);
 
   return (
-    <div className={`sb-presentation ${className ?? ''}`}>
+    <div className={`sb-presentation ${className ?? ''}`} ref={stageRootRef}>
       {/* 3D layer goes behind so canvas/DOM can paint overlays on top. */}
       <div className="sb-stage3d-host" ref={stage3dHostRef} />
       <div className="sb-dom-layer" ref={domRootRef} />

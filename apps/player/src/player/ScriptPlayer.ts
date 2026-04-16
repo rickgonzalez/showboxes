@@ -108,7 +108,7 @@ export class ScriptPlayer {
     if (this._state === 'ended') {
       this.sceneIndex = 0;
     }
-    this.enterScene(this.sceneIndex);
+    void this.enterScene(this.sceneIndex);
   }
 
   pause(): void {
@@ -146,7 +146,7 @@ export class ScriptPlayer {
     this.teardownScene();
     this.sceneIndex = idx;
     if (wasPlaying) {
-      this.enterScene(idx);
+      void this.enterScene(idx);
     } else {
       // Idle seek — render the scene but don't start timers. Useful for
       // manually stepping through scenes while tuning.
@@ -177,19 +177,36 @@ export class ScriptPlayer {
 
   // --- internals ---
 
-  private enterScene(index: number): void {
+  private async enterScene(index: number): Promise<void> {
     const scene = this.script.scenes[index];
     if (!scene) {
       this.end();
       return;
     }
 
-    this.teardownScene();
-    this.sceneIndex = index;
+    // Incoming scene's transition governs both halves of the handoff.
+    const spec = scene.transition ?? this.script.defaults.transition;
+    const isFirstScene = this.currentHandle === null;
+    const epochBeforeOut = this.sceneEpoch;
 
-    this.applyTransition(scene.transition ?? this.script.defaults.transition);
+    if (!isFirstScene) {
+      await this.transitionOut(spec);
+      // If another teardown/seek happened during the out-transition, abort.
+      if (this.sceneEpoch !== epochBeforeOut) return;
+    }
+
+    this.teardownScene(); // increments sceneEpoch
+    this.presenter.clear();
+    this.sceneIndex = index;
+    const epochThisScene = this.sceneEpoch;
+
     this.currentHandle = this.presenter.present(scene.primitive);
     this.events.onSceneEnter?.(scene, index);
+
+    if (!isFirstScene) {
+      await this.transitionIn(spec);
+      if (this.sceneEpoch !== epochThisScene) return;
+    }
 
     const narration = this.voice.speak(scene.narration, {
       speed: this.script.defaults.voice.speed,
@@ -267,7 +284,7 @@ export class ScriptPlayer {
     if (this.sceneIndex >= this.script.scenes.length - 1) {
       this.end();
     } else {
-      this.enterScene(this.sceneIndex + 1);
+      void this.enterScene(this.sceneIndex + 1);
     }
   }
 
@@ -314,7 +331,7 @@ export class ScriptPlayer {
       if (this.sceneIndex >= this.script.scenes.length - 1) {
         this.end();
       } else {
-        this.enterScene(this.sceneIndex + 1);
+        void this.enterScene(this.sceneIndex + 1);
       }
     }, ms);
   }
@@ -339,10 +356,78 @@ export class ScriptPlayer {
     }
   }
 
-  private applyTransition(_t: TransitionSpec): void {
-    // Phase 1: rely on each template's own entrance animation.
-    // Real transition orchestration (fade, slide, dissolve) lives in Phase 6.
-    this.presenter.clear();
+  private wait(ms: number): Promise<void> {
+    return new Promise((r) => window.setTimeout(r, ms));
+  }
+
+  /**
+   * Animate the outgoing scene away before teardown. Runs on the stageRoot
+   * (wraps canvas + DOM + 3D) so all layers move together.
+   */
+  private async transitionOut(spec: TransitionSpec): Promise<void> {
+    if (spec.type === 'cut') return;
+    const root = this.presenter.stageRoot;
+    root.style.transition = `opacity ${spec.durationMs}ms ease, transform ${spec.durationMs}ms ease`;
+    switch (spec.type) {
+      case 'fade':
+      case 'dissolve':
+        root.style.opacity = '0';
+        break;
+      case 'slide-left':
+        root.style.transform = 'translateX(-100%)';
+        break;
+      case 'slide-right':
+        root.style.transform = 'translateX(100%)';
+        break;
+      case 'zoom-in':
+        root.style.transform = 'scale(1.08)';
+        root.style.opacity = '0';
+        break;
+    }
+    await this.wait(spec.durationMs);
+  }
+
+  /**
+   * Animate the incoming scene in. Snaps to the entry state (no transition),
+   * then releases to neutral on the next frame so the browser actually
+   * animates the change instead of jumping.
+   */
+  private async transitionIn(spec: TransitionSpec): Promise<void> {
+    if (spec.type === 'cut') return;
+    const root = this.presenter.stageRoot;
+    root.style.transition = 'none';
+    switch (spec.type) {
+      case 'fade':
+      case 'dissolve':
+        root.style.opacity = '0';
+        root.style.transform = 'none';
+        break;
+      case 'slide-left':
+        root.style.transform = 'translateX(100%)';
+        root.style.opacity = '1';
+        break;
+      case 'slide-right':
+        root.style.transform = 'translateX(-100%)';
+        root.style.opacity = '1';
+        break;
+      case 'zoom-in':
+        root.style.transform = 'scale(0.92)';
+        root.style.opacity = '0';
+        break;
+    }
+    // Force a reflow so the browser registers the entry state before we
+    // swap transitions back on.
+    void root.offsetHeight;
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    root.style.transition = `opacity ${spec.durationMs}ms ease, transform ${spec.durationMs}ms ease`;
+    root.style.opacity = '1';
+    root.style.transform = 'none';
+    await this.wait(spec.durationMs);
+    // Clear inline styles so they don't interfere with future transitions
+    // or any CSS the app might apply.
+    root.style.transition = '';
+    root.style.opacity = '';
+    root.style.transform = '';
   }
 
   private renderSceneOnly(scene: Scene): void {

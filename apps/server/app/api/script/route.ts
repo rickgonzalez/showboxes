@@ -4,6 +4,12 @@ import type { PresentationScript } from '@showboxes/shared-types';
 import { defaultSettings } from '@showboxes/shared-types';
 import { prisma } from '@/lib/prisma';
 import { produceScript, ProducerError } from '../../../lib/agents/producer.client';
+import {
+  buildStageCost,
+  rollupCosts,
+  formatRollupLine,
+  type StageCost,
+} from '@/lib/costs/rollup';
 
 /**
  * /api/script — Agent 2 (Producer/Director).
@@ -88,6 +94,24 @@ export async function POST(req: Request) {
       .replace('T', ' ')
       .slice(0, 16)}`;
 
+    // ── Cost rollup ─────────────────────────────────────────────────
+    // Pull upstream stage costs (triage + analysis) from the Analysis
+    // row this script was derived from, then add the producer stage.
+    // Store the whole rollup on Script.usage so `GET /api/scripts/:id/cost`
+    // can return a full picture without joining.
+    const upstream: StageCost[] = parsed.analysisId
+      ? await loadUpstreamStageCosts(parsed.analysisId)
+      : [];
+    const producerStage = buildStageCost(
+      'producer',
+      parsed.model ?? 'claude-sonnet-4-5', // producer default — keep in sync with produceScript
+      {
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+      },
+    );
+    const rollup = rollupCosts([...upstream, producerStage]);
+
     let saved: { id: string };
     try {
       saved = await prisma.script.create({
@@ -101,7 +125,8 @@ export async function POST(req: Request) {
           settings: settings as unknown as object,
           focusInstructions: parsed.focusInstructions ?? null,
           producerModel: parsed.model ?? null,
-          usage: result.usage as unknown as object,
+          // `usage` column now holds the full CostRollup — not just producer tokens.
+          usage: rollup as unknown as object,
         },
         select: { id: true },
       });
@@ -112,15 +137,19 @@ export async function POST(req: Request) {
           error: 'PERSIST_FAILED',
           detail: (dbErr as Error).message,
           script: result.script,
-          _usage: result.usage,
+          _usage: rollup,
         },
         { status: 500 },
       );
     }
 
+    // One-line cost summary on every successful run. Grep "[cost]" in
+    // dev logs to eyeball totals as the product takes shape.
+    console.log(formatRollupLine(rollup, saved.id));
+
     return NextResponse.json({
       ...result.script,
-      _usage: result.usage,
+      _usage: rollup,
       _id: saved.id,
       _label: label,
     });
@@ -137,6 +166,32 @@ export async function POST(req: Request) {
       { error: 'API_ERROR', detail: (e as Error).message },
       { status: 500 },
     );
+  }
+}
+
+// ── Upstream stage cost loader ───────────────────────────────────
+
+/**
+ * Read the stageCosts blob off the Analysis this Script was derived
+ * from, if any. Returns an empty array on miss so the producer stage
+ * always lands somewhere. Never throws.
+ */
+async function loadUpstreamStageCosts(analysisId: string): Promise<StageCost[]> {
+  try {
+    const row = await prisma.analysis.findUnique({
+      where: { id: analysisId },
+      select: { stageCosts: true },
+    });
+    const blob = row?.stageCosts;
+    if (Array.isArray(blob)) return blob as unknown as StageCost[];
+    return [];
+  } catch (err) {
+    console.warn(
+      '[/api/script] could not read upstream stageCosts for analysis',
+      analysisId,
+      (err as Error).message,
+    );
+    return [];
   }
 }
 

@@ -1,4 +1,5 @@
 import type { Template, TemplateHandle } from './registry';
+import { resolveColor } from './palette';
 
 /**
  * code-cloud — a weighted word cloud of code concepts. DOM-based so text stays
@@ -22,13 +23,10 @@ interface CodeCloudContent {
   items: CloudItem[];
   categoryColors?: Record<string, string>;
   entranceStyle?: 'scatter' | 'spiral' | 'typewriter';
+  /** Continuous gentle float after items land. Off by default — enable per
+   *  scene when the kinetic feel is desired. See TEMPLATE-SPEC.md §9 #5. */
+  float?: boolean;
 }
-
-const PALETTE_DEFAULTS: Record<string, string> = {
-  'palette.primary': '#60a5fa',
-  'palette.secondary': '#a78bfa',
-  'palette.accent': '#34d399',
-};
 
 export const codeCloudTemplate: Template = {
   id: 'code-cloud',
@@ -38,6 +36,7 @@ export const codeCloudTemplate: Template = {
     items: '{ text: string, weight: number, category: string }[] — cloud items',
     categoryColors: 'Record<string, string> — category → color (CSS or palette.* alias)',
     entranceStyle: '"scatter" | "spiral" | "typewriter" — how items appear',
+    float: 'boolean — opt-in continuous gentle float after entrance (default false)',
   },
   demo: {
     label: 'Code Cloud',
@@ -71,6 +70,7 @@ export const codeCloudTemplate: Template = {
       items = [],
       categoryColors = {},
       entranceStyle = 'spiral',
+      float = false,
     } = content;
 
     const container = document.createElement('div');
@@ -111,17 +111,22 @@ export const codeCloudTemplate: Template = {
       const size = sizes[i];
       el.style.fontSize = `${size.toFixed(1)}px`;
       el.style.fontWeight = item.weight > 0.7 ? '800' : item.weight > 0.4 ? '600' : '500';
-      el.style.color = resolveColor(categoryColors[item.category]);
+      el.style.color = resolveColor(categoryColors[item.category], '#e6e8ee');
 
       const { x, y } = positions[i];
       el.style.left = `${x.toFixed(2)}%`;
       el.style.top = `${y.toFixed(2)}%`;
 
-      // Per-item gentle float — random phase so items don't all move together.
-      const floatDur = 4000 + Math.random() * 3000;
-      const floatDelay = Math.random() * 2000;
-      el.style.setProperty('--sb-cloud-float-dur', `${floatDur}ms`);
-      el.style.setProperty('--sb-cloud-float-delay', `${floatDelay}ms`);
+      // Per-item gentle float — opt-in via `float: true`. Random phase so
+      // items don't all move together. CSS gates the animation behind the
+      // `sb-cloud-float` class (see index.css).
+      if (float) {
+        el.classList.add('sb-cloud-float');
+        const floatDur = 4000 + Math.random() * 3000;
+        const floatDelay = Math.random() * 2000;
+        el.style.setProperty('--sb-cloud-float-dur', `${floatDur}ms`);
+        el.style.setProperty('--sb-cloud-float-delay', `${floatDelay}ms`);
+      }
 
       container.appendChild(el);
       itemEls.push(el);
@@ -260,12 +265,6 @@ function computePositions(
     }
     return place(x, y, i);
   });
-}
-
-function resolveColor(input?: string): string {
-  if (!input) return '#e6e8ee';
-  if (input.startsWith('palette.')) return PALETTE_DEFAULTS[input] ?? '#e6e8ee';
-  return input;
 }
 
 function clamp01(n: number): number {

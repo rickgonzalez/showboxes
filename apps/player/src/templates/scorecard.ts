@@ -83,133 +83,76 @@ export const scorecardTemplate: Template = {
 
     // ── Wrapper ──────────────────────────────────────────────────
     const wrapper = document.createElement('div');
-    wrapper.className = 'scorecard';
-    Object.assign(wrapper.style, {
-      position: 'absolute',
-      inset: '0',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '32px 24px',
-      fontFamily: 'Inter, system-ui, sans-serif',
-      color: '#f8fafc',
-    });
+    wrapper.className = 'sb-scorecard-wrapper';
 
     // Title
     if (c.title) {
       const titleEl = document.createElement('h2');
+      titleEl.className = 'sb-scorecard-title';
       titleEl.textContent = c.title;
-      Object.assign(titleEl.style, {
-        fontSize: '22px',
-        fontWeight: '700',
-        marginBottom: '16px',
-      });
       wrapper.appendChild(titleEl);
     }
 
     // ── Overall grade badge ──────────────────────────────────────
+    // Per-instance grade color flows through CSS custom properties so the
+    // shared class can stay generic. `--sb-grade-glow` is the same color
+    // with reduced alpha (44/0xff ≈ 27%) — used for the soft outer halo.
     const badge = document.createElement('div');
+    badge.className = 'sb-scorecard-badge';
     const oc = gradeColor(c.overallGrade);
-    Object.assign(badge.style, {
-      width: '96px',
-      height: '96px',
-      borderRadius: '50%',
-      border: `4px solid ${oc}`,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: '48px',
-      fontWeight: '800',
-      color: oc,
-      marginBottom: '28px',
-      boxShadow: `0 0 30px ${oc}44`,
-      opacity: '0',
-      transform: 'scale(0.6)',
-      transition: 'opacity 500ms ease, transform 500ms ease',
-    });
+    badge.style.setProperty('--sb-grade-color', oc);
+    badge.style.setProperty('--sb-grade-glow', `${oc}44`);
     badge.textContent = c.overallGrade;
     wrapper.appendChild(badge);
 
     // Pop in the badge
-    requestAnimationFrame(() => {
-      badge.style.opacity = '1';
-      badge.style.transform = 'scale(1)';
-    });
+    requestAnimationFrame(() => badge.classList.add('sb-visible'));
 
     // ── Item grid ────────────────────────────────────────────────
     const grid = document.createElement('div');
-    Object.assign(grid.style, {
-      display: 'grid',
-      gridTemplateColumns: items.length <= 4 ? '1fr 1fr' : '1fr 1fr 1fr',
-      gap: '12px',
-      width: '100%',
-      maxWidth: '680px',
-    });
+    grid.className =
+      items.length <= 4 ? 'sb-scorecard-grid sb-cols-2' : 'sb-scorecard-grid';
 
     const cardEls: HTMLElement[] = [];
+    const timers: number[] = [];
 
     items.forEach((item, i) => {
       const gc = gradeColor(item.grade);
       const card = document.createElement('div');
-      Object.assign(card.style, {
-        background: '#1e293b',
-        borderRadius: '10px',
-        padding: '14px 16px',
-        borderLeft: `4px solid ${gc}`,
-        opacity: '0',
-        transform: 'translateY(10px)',
-        transition: 'opacity 400ms ease, transform 400ms ease, box-shadow 300ms ease',
-      });
+      card.className = 'sb-scorecard-card';
+      card.style.setProperty('--sb-grade-color', gc);
+      // 66/0xff ≈ 40%, matches the prior emphasize glow alpha.
+      card.style.setProperty('--sb-grade-glow', `${gc}66`);
 
       // Grade + label row
       const headerRow = document.createElement('div');
-      Object.assign(headerRow.style, {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px',
-        marginBottom: '6px',
-      });
+      headerRow.className = 'sb-scorecard-header';
+
       const gradeEl = document.createElement('span');
+      gradeEl.className = 'sb-scorecard-grade';
       gradeEl.textContent = item.grade;
-      Object.assign(gradeEl.style, {
-        fontSize: '22px',
-        fontWeight: '800',
-        color: gc,
-        lineHeight: '1',
-      });
+
       const labelEl = document.createElement('span');
+      labelEl.className = 'sb-scorecard-label';
       labelEl.textContent = item.label;
-      Object.assign(labelEl.style, {
-        fontSize: '14px',
-        fontWeight: '600',
-        color: '#e2e8f0',
-      });
+
       headerRow.appendChild(gradeEl);
       headerRow.appendChild(labelEl);
       card.appendChild(headerRow);
 
       // Note
       const noteEl = document.createElement('div');
+      noteEl.className = 'sb-scorecard-note';
       noteEl.textContent = item.note;
-      Object.assign(noteEl.style, {
-        fontSize: '12px',
-        color: '#94a3b8',
-        lineHeight: '1.4',
-      });
       card.appendChild(noteEl);
-
-      // Store grade color for emphasize
-      (card as any).__gradeColor = gc;
 
       cardEls.push(card);
       grid.appendChild(card);
 
       // Stagger reveal
-      setTimeout(() => {
-        card.style.opacity = '1';
-        card.style.transform = 'translateY(0)';
-      }, 300 + i * 150);
+      timers.push(
+        window.setTimeout(() => card.classList.add('sb-visible'), 300 + i * 150),
+      );
     });
 
     wrapper.appendChild(grid);
@@ -218,16 +161,17 @@ export const scorecardTemplate: Template = {
     // ── Handle ─────────────────────────────────────────────────
     return {
       dismiss() {
+        timers.forEach(clearTimeout);
         wrapper.remove();
       },
       emphasize(target: string) {
         const idx = parseInt(target, 10);
         if (Number.isNaN(idx) || !cardEls[idx]) return;
-        const gc = (cardEls[idx] as any).__gradeColor as string;
-        cardEls[idx].style.boxShadow = `0 0 20px ${gc}66`;
-        setTimeout(() => {
-          cardEls[idx].style.boxShadow = 'none';
-        }, 1200);
+        const card = cardEls[idx];
+        card.classList.add('sb-emphasize');
+        timers.push(
+          window.setTimeout(() => card.classList.remove('sb-emphasize'), 1200),
+        );
       },
     };
   },

@@ -45,6 +45,9 @@ export async function POST(req: Request) {
 
     const { report } = await runTriageSessionToCompletion(sessionId);
 
+    // Triage itself is stateless — we don't persist it. The sessionId is
+    // returned so /api/analyze can later pull triage usage for the
+    // per-script cost rollup. See lib/costs/rollup.ts.
     return NextResponse.json({ sessionId, report }, { status: 200 });
   } catch (e) {
     const message = (e as Error).message;

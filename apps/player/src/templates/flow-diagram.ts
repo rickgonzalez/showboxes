@@ -1,21 +1,24 @@
-import * as THREE from 'three';
-import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import type { Template, TemplateHandle } from './registry';
-import type { Stage3DItem } from '../core/Stage3D';
+import { resolveColor } from './palette';
 
 /**
- * flow-diagram — a directed graph rendered in 3D. Labeled nodes, edges
- * between them, optional node grouping with color. Designed as an animated
- * whiteboard sketch, not a full diagramming tool. Nodes appear with stagger,
- * edges draw in after both endpoints are visible, and the camera can slowly
- * orbit.
+ * flow-diagram — a directed graph of labeled nodes and edges, rendered as
+ * crisp SVG with HTML labels via foreignObject. Auto-fits its content to
+ * the available frame via SVG viewBox (object-fit: contain semantics).
  *
- * Slot schema (matches architecture spec):
+ * Why SVG, not 3D? See docs/TEMPLATE-SPEC.md §9b. Short version: nodes
+ * here are flat rectangles; the only thing that ever needed "3D" was
+ * camera-dolly fit-to-frame, which viewBox does for free at any scale,
+ * including the codesplain hero embed (which uses a CSS transform that
+ * defeats canvas/WebGL backbuffer sizing).
+ *
+ * Slot schema (unchanged from the 3D version):
  *   nodes:     { id, label, icon?, group? }[]
  *   edges:     { from, to, label? }[]
  *   groups?:   { id, label, color }[]     (color can be "palette.primary")
  *   staggerMs: number
  *   layout:    "left-to-right" | "top-to-bottom" | "radial"
+ *   orbit:     boolean — kept for API compatibility; ignored (was 3D camera).
  */
 
 interface NodeSpec {
@@ -43,27 +46,29 @@ interface FlowDiagramContent {
   groups?: GroupSpec[];
   staggerMs?: number;
   layout?: 'left-to-right' | 'top-to-bottom' | 'radial';
-  /** Whether the camera slowly orbits the scene (default true). */
+  /** Was the 3D camera orbit toggle. Now a no-op; accepted for back-compat. */
   orbit?: boolean;
 }
 
-const PALETTE_DEFAULTS: Record<string, string> = {
-  'palette.primary': '#60a5fa',
-  'palette.secondary': '#a78bfa',
-  'palette.accent': '#34d399',
-};
+/* ── Layout constants (in viewBox units) ────────────────────────────── */
+
+const NODE_W = 160;     // node card width
+const NODE_H = 56;      // node card height
+const NODE_RX = 12;     // corner radius
+const FIT_PAD = 24;     // padding around the bounding box inside viewBox
+const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export const flowDiagramTemplate: Template = {
   id: 'flow-diagram',
   description:
-    'Directed graph of labeled nodes and edges, rendered in 3D with staggered entrance. Good for architecture and data flow.',
+    'Directed graph of labeled nodes and edges, rendered as scalable SVG with staggered entrance. Good for architecture and data flow.',
   slots: {
     nodes: '{ id, label, icon?, group? }[] — nodes in the graph',
     edges: '{ from, to, label? }[] — directed edges',
     groups: '{ id, label, color }[] — optional node groups (color = CSS or palette.*)',
     staggerMs: 'number — delay between node entrances (default 250)',
     layout: '"left-to-right" | "top-to-bottom" | "radial"',
-    orbit: 'boolean — whether the camera slowly orbits (default true)',
+    orbit: 'boolean — accepted for back-compat; no-op in the SVG renderer',
   },
   demo: {
     label: 'Flow Diagram',
@@ -86,7 +91,6 @@ export const flowDiagramTemplate: Template = {
       ],
       staggerMs: 300,
       layout: 'left-to-right',
-      orbit: true,
     },
     emphasizeAfter: { target: 'auth', delayMs: 3000 },
   },
@@ -98,298 +102,324 @@ export const flowDiagramTemplate: Template = {
       groups = [],
       staggerMs = 250,
       layout = 'left-to-right',
-      orbit = true,
     } = content;
 
-    const stage = presenter.stage3d;
-    if (!stage) {
-      // Presenter was constructed without a 3D host — render a fallback notice.
-      const note = document.createElement('div');
-      note.className = 'sb-flow-fallback';
-      note.textContent = 'flow-diagram requires a 3D layer (stage3dHost).';
-      presenter.domRoot.appendChild(note);
-      return {
-        dismiss: () => note.remove(),
-      };
-    }
+    // Map groups → colors (CSS strings).
+    const groupColor = new Map<string, string>();
+    for (const g of groups) groupColor.set(g.id, resolveColor(g.color));
 
-    // Map groups → colors.
-    const groupColor = new Map<string, number>();
-    for (const g of groups) {
-      groupColor.set(g.id, parseColor(resolveColor(g.color)));
-    }
-
-    // Soft cap on graph complexity — the Producer sometimes hands us 20+ nodes
-    // with dense edges, which becomes an unreadable ball of lines. Keep the
-    // highest-degree nodes and drop the rest (with their edges).
+    // Soft cap on graph complexity. Producer occasionally hands 20+ dense
+    // nodes which become a ball of lines; keep the highest-degree ones.
     const { nodes: trimmedNodes, edges: trimmedEdges } = trimGraph(nodes, edges, 12);
 
-    // Figure out the actual viewport aspect so we can (a) fit properly and
-    // (b) flip orientation when the Producer picked one that fights the frame.
-    // Stage3D may not have synced size yet on first tick — fall back to 16:9.
-    const viewW = stage.width > 0 ? stage.width : 16;
-    const viewH = stage.height > 0 ? stage.height : 9;
-    const aspect = viewW / viewH;
+    // Auto-flip orientation when the graph's natural shape fights the host
+    // aspect. Read host clientWidth/Height — these ignore CSS transforms,
+    // matching the design surface (see docs/TEMPLATE-SPEC.md §9b).
+    const hostRect = presenter.domRoot.getBoundingClientRect();
+    const viewW = hostRect.width || 1280;
+    const viewH = hostRect.height || 720;
+    const hostAspect = viewW / viewH;
 
-    // Orientation auto-correction: for deep graphs (many ranks, narrow per
-    // rank) in a wide viewport, vertical stacks clip top/bottom while wasting
-    // horizontal room. Flip when the chosen axis clearly disagrees with the
-    // frame. Radial stays as-is.
     let effectiveLayout = layout;
     if (layout !== 'radial') {
       const ranks = computeRanks(trimmedNodes, trimmedEdges);
       const rankCount = Math.max(0, ...ranks) + 1;
       const widest = maxBucketSize(ranks);
-      // Ratio of "along-flow" to "cross-flow" that the graph wants.
       const graphRatio = rankCount / Math.max(1, widest);
-      // If graph wants to be long-and-thin and the frame is wide, prefer LTR.
-      // If graph wants to be tall-and-thin and the frame is tall, prefer TTB.
-      if (aspect >= 1.2 && graphRatio > 1.1) effectiveLayout = 'left-to-right';
-      else if (aspect < 0.9 && graphRatio > 1.1) effectiveLayout = 'top-to-bottom';
+      if (hostAspect >= 1.2 && graphRatio > 1.1) effectiveLayout = 'left-to-right';
+      else if (hostAspect < 0.9 && graphRatio > 1.1) effectiveLayout = 'top-to-bottom';
     }
 
-    // Compute node positions based on (possibly overridden) layout.
+    // Compute centre positions for each node in viewBox-unit space.
     const positions = computeLayout(trimmedNodes, trimmedEdges, effectiveLayout);
 
-    // Build nodes — rounded box meshes + CSS2D labels.
-    const nodeObjs = new Map<string, THREE.Group>();
-    const nodeItems: Stage3DItem[] = [];
+    // Bounding box of the laid-out graph (incl. node footprint).
+    const bounds = computeBounds(positions);
+
+    // viewBox sized to the bounding box + padding. The SVG element itself
+    // fills the host with preserveAspectRatio="xMidYMid meet" — that's
+    // literally object-fit: contain, scaled at the GPU.
+    const vbX = bounds.minX - FIT_PAD;
+    const vbY = bounds.minY - FIT_PAD;
+    const vbW = bounds.maxX - bounds.minX + FIT_PAD * 2;
+    const vbH = bounds.maxY - bounds.minY + FIT_PAD * 2;
+
+    /* ── Build the DOM container + SVG ─────────────────────────────── */
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'sb-flow-wrapper';
+    wrapper.style.cssText =
+      'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;';
+
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('class', 'sb-flow-svg');
+    svg.setAttribute('viewBox', `${vbX} ${vbY} ${vbW} ${vbH}`);
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+    svg.style.cssText = 'display:block;overflow:visible;';
+
+    // Arrowhead marker definition.
+    const defs = document.createElementNS(SVG_NS, 'defs');
+    defs.innerHTML = `
+      <marker id="sb-flow-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+              markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 Z" fill="#94a3b8"/>
+      </marker>
+    `;
+    svg.appendChild(defs);
+
+    /* ── Render edges first (so nodes paint over endpoints) ────────── */
+
+    const edgeGroups: SVGGElement[] = [];
+    trimmedEdges.forEach((e) => {
+      const fromIdx = trimmedNodes.findIndex((n) => n.id === e.from);
+      const toIdx = trimmedNodes.findIndex((n) => n.id === e.to);
+      if (fromIdx < 0 || toIdx < 0) {
+        edgeGroups.push(document.createElementNS(SVG_NS, 'g')); // placeholder
+        return;
+      }
+      const a = positions[fromIdx];
+      const b = positions[toIdx];
+      const g = buildEdge(a, b, e.label);
+      g.style.opacity = '0';
+      g.style.transition = 'opacity 400ms ease';
+      svg.appendChild(g);
+      edgeGroups.push(g);
+    });
+
+    /* ── Render nodes ──────────────────────────────────────────────── */
+
+    const nodeGroups = new Map<string, SVGGElement>();
+    trimmedNodes.forEach((n, i) => {
+      const pos = positions[i];
+      const color = (n.group && groupColor.get(n.group)) || '#334155';
+      const g = buildNode(pos.x, pos.y, n.label, color, n.icon);
+      // Start invisible/small for stagger entrance.
+      g.style.opacity = '0';
+      g.style.transformOrigin = `${pos.x}px ${pos.y}px`;
+      g.style.transform = 'scale(0.6)';
+      g.style.transition = 'opacity 420ms ease, transform 420ms cubic-bezier(.2,.8,.3,1.2)';
+      svg.appendChild(g);
+      nodeGroups.set(n.id, g);
+    });
+
+    wrapper.appendChild(svg);
+    presenter.domRoot.appendChild(wrapper);
+
+    /* ── Stagger entrance ──────────────────────────────────────────── */
+
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
 
     trimmedNodes.forEach((n, i) => {
-      const color = n.group ? groupColor.get(n.group) ?? 0x334155 : 0x334155;
-      const group = buildNode(n.label, color, n.icon);
-      const pos = positions[i];
-      group.position.set(pos.x, pos.y, 0);
-      // Start invisible/small and animate in.
-      group.scale.setScalar(0.01);
-      (group.userData as { targetScale: number }).targetScale = 1;
-
-      const item: Stage3DItem = {
-        object: group,
-        update: makeScaleIn(group, 1, 500),
-      };
-      // Don't add yet — stagger in via setTimeout.
-      nodeObjs.set(n.id, group);
-      nodeItems.push(item);
-    });
-
-    // Build edges — tube lines from source to target with optional label.
-    const edgeItems: Stage3DItem[] = [];
-    const edgeObjs: THREE.Object3D[] = [];
-    trimmedEdges.forEach((e) => {
-      const a = nodeObjs.get(e.from);
-      const b = nodeObjs.get(e.to);
-      if (!a || !b) return;
-      const line = buildEdge(a.position, b.position, e.label);
-      line.visible = false; // revealed after both endpoints are visible
-      edgeObjs.push(line);
-      edgeItems.push({ object: line });
-    });
-
-    // Fit-to-frame: the Producer's layouts often exceed the camera frustum
-    // (20×11 world units at z=0). Compute the graph's bounding box from node
-    // positions + node footprint, then apply a uniform world-scale offset so
-    // the whole diagram stays on screen with some padding. We apply this by
-    // scaling each node's position + shrinking node scale target, so edges
-    // (which read positions at build time, already baked in) rescale too
-    // when we rebuild their geometry here.
-    const fit = computeFitScale(positions, aspect);
-    if (fit < 1) {
-      // Rescale node positions.
-      trimmedNodes.forEach((_, i) => {
-        positions[i].x *= fit;
-        positions[i].y *= fit;
-        const g = nodeItems[i].object as THREE.Group;
-        g.position.set(positions[i].x, positions[i].y, 0);
-        // Also shrink target scale so big nodes don't crowd tight layouts.
-        (g.userData as { targetScale: number }).targetScale = fit;
-        nodeItems[i].update = makeScaleIn(g, fit, 500);
-      });
-      // Rebuild edges against the rescaled endpoints.
-      edgeObjs.forEach((_obj, i) => {
-        const e = trimmedEdges[i];
-        const fromIdx = trimmedNodes.findIndex((n) => n.id === e.from);
-        const toIdx = trimmedNodes.findIndex((n) => n.id === e.to);
-        if (fromIdx < 0 || toIdx < 0) return;
-        const a = new THREE.Vector3(positions[fromIdx].x, positions[fromIdx].y, 0);
-        const b = new THREE.Vector3(positions[toIdx].x, positions[toIdx].y, 0);
-        const rebuilt = buildEdge(a, b, e.label);
-        rebuilt.visible = false;
-        // Swap the item's object so add/remove still works.
-        edgeItems[i].object = rebuilt;
-        edgeObjs[i] = rebuilt;
-      });
-    }
-
-    // Stagger entrance.
-    const timeouts: ReturnType<typeof setTimeout>[] = [];
-    nodeItems.forEach((item, i) => {
       const tid = setTimeout(() => {
-        stage.add(item);
-      }, i * staggerMs);
+        const g = nodeGroups.get(n.id);
+        if (!g) return;
+        g.style.opacity = '1';
+        g.style.transform = 'scale(1)';
+      }, 80 + i * staggerMs);
       timeouts.push(tid);
     });
 
-    // Edges appear after their slower endpoint has had time to enter.
     trimmedEdges.forEach((e, i) => {
       const fromIdx = trimmedNodes.findIndex((n) => n.id === e.from);
       const toIdx = trimmedNodes.findIndex((n) => n.id === e.to);
       const later = Math.max(fromIdx, toIdx);
-      const delay = later * staggerMs + 400;
       const tid = setTimeout(() => {
-        const item = edgeItems[i];
-        item.object.visible = true;
-        stage.add(item);
-      }, delay);
+        const g = edgeGroups[i];
+        if (g) g.style.opacity = '1';
+      }, 80 + later * staggerMs + 320);
       timeouts.push(tid);
     });
 
-    // Camera orbit — a very slow, small-angle rotation around the center.
-    let orbitItem: Stage3DItem | null = null;
-    if (orbit) {
-      const camera = stage.camera;
-      const baseZ = camera.position.z;
-      orbitItem = {
-        // Dummy object — we just need update() to run each frame.
-        object: new THREE.Object3D(),
-        update: (_dt, elapsed) => {
-          const angle = Math.sin(elapsed * 0.15) * 0.25;
-          camera.position.x = Math.sin(angle) * baseZ;
-          camera.position.z = Math.cos(angle) * baseZ;
-          camera.lookAt(0, 0, 0);
-        },
-      };
-      stage.add(orbitItem);
-    }
+    /* ── Handle ────────────────────────────────────────────────────── */
 
     const handle: TemplateHandle = {
       dismiss: () => {
         timeouts.forEach(clearTimeout);
-        nodeItems.forEach((it) => stage.remove(it));
-        edgeItems.forEach((it) => stage.remove(it));
-        if (orbitItem) stage.remove(orbitItem);
-        // Reset camera for subsequent scenes.
-        stage.camera.position.set(0, 0, 12);
-        stage.camera.lookAt(0, 0, 0);
+        wrapper.remove();
       },
       emphasize: (target) => {
-        const group = nodeObjs.get(target);
-        if (!group) return;
-        // Pulse scale.
-        const originalScale = group.scale.x;
-        let t = 0;
-        const pulseObj: Stage3DItem = {
-          object: new THREE.Object3D(),
-          update: (dt) => {
-            t += dt;
-            const s = originalScale + Math.sin(t * 8) * 0.15 * Math.exp(-t * 2);
-            group.scale.setScalar(s);
-            if (t > 1.5) {
-              group.scale.setScalar(originalScale);
-              stage.remove(pulseObj);
-            }
-          },
-        };
-        stage.add(pulseObj);
+        const g = nodeGroups.get(target);
+        if (!g) return;
+        const rect = g.querySelector<SVGRectElement>('.sb-flow-node-bg');
+        if (!rect) return;
+        const orig = rect.getAttribute('stroke') ?? '#ffffff';
+        rect.setAttribute('stroke', '#ffeb3b');
+        rect.setAttribute('stroke-width', '3');
+        const tid = setTimeout(() => {
+          rect.setAttribute('stroke', orig);
+          rect.setAttribute('stroke-width', '1.5');
+        }, 1400);
+        timeouts.push(tid);
       },
     };
     return handle;
   },
 };
 
+/* ── Builders ─────────────────────────────────────────────────────── */
+
 /**
- * Build a node as a rounded-ish box mesh + a CSS2D text label. The icon
- * string is rendered in the label (emoji/glyph work fine).
+ * Build a node group: rounded rect background + foreignObject with HTML
+ * label so emoji/text render through the DOM rasterizer (crisp at any
+ * scale). Centred on (cx, cy) in viewBox units.
  */
-function buildNode(label: string, color: number, icon?: string): THREE.Group {
-  const group = new THREE.Group();
+function buildNode(
+  cx: number,
+  cy: number,
+  label: string,
+  color: string,
+  icon?: string
+): SVGGElement {
+  const g = document.createElementNS(SVG_NS, 'g');
+  g.setAttribute('class', 'sb-flow-node');
 
-  // Box — flat and wide, more "card" than "cube". Kept modest so dense
-  // graphs (10+ nodes) don't push off-screen at the camera's default z=12.
-  const geometry = new THREE.BoxGeometry(2.0, 0.85, 0.2);
-  const material = new THREE.MeshStandardMaterial({
-    color,
-    roughness: 0.55,
-    metalness: 0.1,
-  });
-  const mesh = new THREE.Mesh(geometry, material);
-  group.add(mesh);
+  const x = cx - NODE_W / 2;
+  const y = cy - NODE_H / 2;
 
-  // Subtle outline edge to give it definition.
-  const edges = new THREE.EdgesGeometry(geometry);
-  const lineMat = new THREE.LineBasicMaterial({
-    color: 0xffffff,
-    transparent: true,
-    opacity: 0.25,
-  });
-  const line = new THREE.LineSegments(edges, lineMat);
-  group.add(line);
+  // Background card with the group color as a left accent stripe.
+  const bg = document.createElementNS(SVG_NS, 'rect');
+  bg.setAttribute('class', 'sb-flow-node-bg');
+  bg.setAttribute('x', String(x));
+  bg.setAttribute('y', String(y));
+  bg.setAttribute('width', String(NODE_W));
+  bg.setAttribute('height', String(NODE_H));
+  bg.setAttribute('rx', String(NODE_RX));
+  bg.setAttribute('ry', String(NODE_RX));
+  bg.setAttribute('fill', '#1e293b');
+  bg.setAttribute('stroke', '#ffffff');
+  bg.setAttribute('stroke-opacity', '0.18');
+  bg.setAttribute('stroke-width', '1.5');
+  g.appendChild(bg);
 
-  // CSS2D label — crisp HTML text that always faces the camera.
-  const el = document.createElement('div');
-  el.className = 'sb-flow-node-label';
-  el.textContent = icon ? `${icon}  ${label}` : label;
-  // We avoid importing CSS2DObject directly here; Stage3D.makeLabel does it.
-  // But we need to construct one, so re-import the class lazily.
-  const labelObj = makeCSS2DLabel(el);
-  labelObj.position.set(0, 0, 0.15); // slightly in front of the box face
-  group.add(labelObj);
+  // Left accent stripe in the group color.
+  const stripe = document.createElementNS(SVG_NS, 'rect');
+  stripe.setAttribute('x', String(x));
+  stripe.setAttribute('y', String(y));
+  stripe.setAttribute('width', '6');
+  stripe.setAttribute('height', String(NODE_H));
+  stripe.setAttribute('rx', '3');
+  stripe.setAttribute('ry', '3');
+  stripe.setAttribute('fill', color);
+  g.appendChild(stripe);
 
-  return group;
+  // Label via foreignObject — gives us native text rendering, emoji,
+  // ellipsis, font fallback. Inset from the stripe.
+  const fo = document.createElementNS(SVG_NS, 'foreignObject');
+  fo.setAttribute('x', String(x + 12));
+  fo.setAttribute('y', String(y));
+  fo.setAttribute('width', String(NODE_W - 16));
+  fo.setAttribute('height', String(NODE_H));
+
+  const labelDiv = document.createElement('div');
+  labelDiv.className = 'sb-flow-node-label';
+  labelDiv.style.cssText =
+    'width:100%;height:100%;display:flex;align-items:center;justify-content:center;' +
+    "font-family:system-ui,-apple-system,sans-serif;font-size:18px;font-weight:600;" +
+    'color:#ffffff;text-shadow:0 1px 3px rgba(0,0,0,.6);' +
+    'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.01em;';
+  labelDiv.textContent = icon ? `${icon}  ${label}` : label;
+  fo.appendChild(labelDiv);
+  g.appendChild(fo);
+
+  return g;
 }
 
 /**
- * Build an edge between two positions as a thin curved tube with an optional
- * label at the midpoint. Straight-ish with a slight bow so overlapping edges
- * remain distinguishable.
+ * Build an edge: a quadratic bezier path (slight bow so overlapping edges
+ * stay distinguishable) with an arrowhead and an optional midpoint label.
+ * The path stops at the edge of the target node, not its centre, so the
+ * arrowhead lands on the box edge.
  */
 function buildEdge(
-  from: THREE.Vector3,
-  to: THREE.Vector3,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
   label?: string
-): THREE.Group {
-  const group = new THREE.Group();
+): SVGGElement {
+  const g = document.createElementNS(SVG_NS, 'g');
+  g.setAttribute('class', 'sb-flow-edge');
 
-  // Slight curve: bow toward positive-Z so edges lift off the node plane.
-  const mid = new THREE.Vector3().addVectors(from, to).multiplyScalar(0.5);
-  mid.z += 0.4;
+  // Trim endpoints to node rectangle borders so the line doesn't disappear
+  // under the node and the arrowhead lands cleanly on the edge.
+  const start = clipToRect(from, to);
+  const end = clipToRect(to, from);
 
-  const curve = new THREE.QuadraticBezierCurve3(from.clone(), mid, to.clone());
-  const geometry = new THREE.TubeGeometry(curve, 24, 0.035, 8, false);
-  const material = new THREE.MeshBasicMaterial({
-    color: 0x94a3b8,
-    transparent: true,
-    opacity: 0.7,
-  });
-  const tube = new THREE.Mesh(geometry, material);
-  group.add(tube);
+  // Slight perpendicular bow for visual separation.
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const bow = Math.min(28, len * 0.12);
+  const mx = (start.x + end.x) / 2 + (-dy / len) * bow;
+  const my = (start.y + end.y) / 2 + (dx / len) * bow;
 
-  // Arrowhead cone pointing along the curve's last segment.
-  const tangent = curve.getTangent(1).normalize();
-  const cone = new THREE.Mesh(
-    new THREE.ConeGeometry(0.12, 0.3, 10),
-    new THREE.MeshBasicMaterial({ color: 0x94a3b8 })
-  );
-  cone.position.copy(to);
-  cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tangent);
-  group.add(cone);
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('d', `M ${start.x} ${start.y} Q ${mx} ${my} ${end.x} ${end.y}`);
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', '#94a3b8');
+  path.setAttribute('stroke-width', '2');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('marker-end', 'url(#sb-flow-arrow)');
+  g.appendChild(path);
 
-  // Optional label near the midpoint.
   if (label) {
-    const el = document.createElement('div');
-    el.className = 'sb-flow-edge-label';
-    el.textContent = label;
-    const labelObj = makeCSS2DLabel(el);
-    labelObj.position.copy(mid);
-    group.add(labelObj);
+    // Pill background + text at the midpoint so the label is readable
+    // even when it crosses other edges.
+    const text = document.createElementNS(SVG_NS, 'text');
+    text.setAttribute('x', String(mx));
+    text.setAttribute('y', String(my + 4));
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('font-family', 'system-ui, -apple-system, sans-serif');
+    text.setAttribute('font-size', '13');
+    text.setAttribute('font-weight', '500');
+    text.setAttribute('fill', '#cbd5e1');
+    text.textContent = label;
+
+    // Background pill — sized after measuring would be ideal, but
+    // estimating from text length keeps this allocation-free.
+    const padX = 6;
+    const w = label.length * 7 + padX * 2;
+    const h = 18;
+    const bg = document.createElementNS(SVG_NS, 'rect');
+    bg.setAttribute('x', String(mx - w / 2));
+    bg.setAttribute('y', String(my - h / 2));
+    bg.setAttribute('width', String(w));
+    bg.setAttribute('height', String(h));
+    bg.setAttribute('rx', '4');
+    bg.setAttribute('ry', '4');
+    bg.setAttribute('fill', '#0f172a');
+    bg.setAttribute('fill-opacity', '0.8');
+    g.appendChild(bg);
+    g.appendChild(text);
   }
 
-  return group;
+  return g;
 }
 
 /**
- * Layout the nodes in a plane (z = 0) based on the chosen strategy.
+ * Clip the line from `from` toward `target` to the rectangle around `from`
+ * (NODE_W × NODE_H centred on `from`). Returns the intersection point on
+ * the rectangle boundary — that's where the visible line starts/ends.
  */
+function clipToRect(
+  from: { x: number; y: number },
+  toward: { x: number; y: number }
+): { x: number; y: number } {
+  const dx = toward.x - from.x;
+  const dy = toward.y - from.y;
+  if (dx === 0 && dy === 0) return { ...from };
+  const halfW = NODE_W / 2;
+  const halfH = NODE_H / 2;
+  // Parametric: from + t*(dx,dy) hits the rectangle boundary at the
+  // smaller of the two axis-clip distances.
+  const tx = dx === 0 ? Infinity : halfW / Math.abs(dx);
+  const ty = dy === 0 ? Infinity : halfH / Math.abs(dy);
+  const t = Math.min(tx, ty);
+  return { x: from.x + dx * t, y: from.y + dy * t };
+}
+
+/* ── Layout ───────────────────────────────────────────────────────── */
+
 function computeLayout(
   nodes: NodeSpec[],
   edges: EdgeSpec[],
@@ -399,48 +429,40 @@ function computeLayout(
   if (n === 0) return [];
 
   if (layout === 'radial') {
+    // Radius scales with node count so cards don't overlap.
+    const r = Math.max(NODE_W * 1.2, n * NODE_W * 0.35);
     return nodes.map((_, i) => {
       const angle = (i / n) * Math.PI * 2 - Math.PI / 2;
-      const r = Math.max(2.4, n * 0.55);
       return { x: Math.cos(angle) * r, y: Math.sin(angle) * r };
     });
   }
 
-  // For left-to-right / top-to-bottom, compute rank (longest path from roots)
-  // so edges point forward where possible.
   const rank = computeRanks(nodes, edges);
   const maxRank = Math.max(0, ...rank);
   const buckets: NodeSpec[][] = Array.from({ length: maxRank + 1 }, () => []);
   nodes.forEach((node, i) => buckets[rank[i]].push(node));
 
-  const positions: Record<string, { x: number; y: number }> = {};
   const horizontal = layout === 'left-to-right';
-  // Node footprint is 2.0 × 0.85. "primary" is along the flow axis, "cross"
-  // is perpendicular. Label text lives inside 2.0-wide boxes, so horizontal
-  // neighbours need ≥ node-width + gap to stay readable. Previously primary
-  // was 2.8 (only 0.8 gap between rank centres) — labels overlapped on wide
-  // graphs. Scale cross-spacing by the box's short side too.
-  const primarySpacing = horizontal ? 4.0 : 2.4; // along flow
-  const crossSpacing = horizontal ? 1.8 : 3.2;   // perpendicular
+  // Spacing in viewBox units. Primary = along flow; cross = perpendicular.
+  // Generous gaps so edges have room to bow without crossing labels.
+  const primarySpacing = horizontal ? NODE_W * 1.6 : NODE_H * 2.4;
+  const crossSpacing = horizontal ? NODE_H * 1.8 : NODE_W * 1.3;
 
+  const positions: Record<string, { x: number; y: number }> = {};
   buckets.forEach((bucket, r) => {
     const count = bucket.length;
     bucket.forEach((node, k) => {
       const primary = (r - maxRank / 2) * primarySpacing;
       const cross = (k - (count - 1) / 2) * crossSpacing;
       positions[node.id] = horizontal
-        ? { x: primary, y: -cross }
-        : { x: cross, y: -primary };
+        ? { x: primary, y: cross }
+        : { x: cross, y: primary };
     });
   });
 
-  return nodes.map((n) => positions[n.id] ?? { x: 0, y: 0 });
+  return nodes.map((nd) => positions[nd.id] ?? { x: 0, y: 0 });
 }
 
-/**
- * Compute a simple rank for each node = length of longest incoming path.
- * Falls back to 0 for roots. Cycle-safe (bounded by node count).
- */
 function computeRanks(nodes: NodeSpec[], edges: EdgeSpec[]): number[] {
   const index = new Map<string, number>();
   nodes.forEach((n, i) => index.set(n.id, i));
@@ -451,7 +473,6 @@ function computeRanks(nodes: NodeSpec[], edges: EdgeSpec[]): number[] {
     const ti = index.get(e.to);
     if (fi != null && ti != null) incoming[ti].push(fi);
   }
-  // Relax ranks up to n times.
   for (let iter = 0; iter < nodes.length; iter++) {
     let changed = false;
     for (let i = 0; i < nodes.length; i++) {
@@ -467,12 +488,6 @@ function computeRanks(nodes: NodeSpec[], edges: EdgeSpec[]): number[] {
   return rank;
 }
 
-/**
- * Drop low-degree nodes (and any edges touching them) when the graph is
- * larger than `maxNodes`. We rank nodes by edge degree so the hubs stay —
- * those are usually the ones worth showing. Pure nodes (no edges) are the
- * first to go.
- */
 function trimGraph(
   nodes: NodeSpec[],
   edges: EdgeSpec[],
@@ -497,79 +512,33 @@ function trimGraph(
   };
 }
 
-/**
- * Compute a uniform scale factor that fits the node positions + their
- * footprint into a safe portion of the camera frustum. Camera is at z=12 with
- * fov=50° → visible plane at z=0 is ~11.2 tall; we use 90% of that. Width is
- * derived from the runtime aspect ratio (assumed ~16:9 worst case). Returns
- * 1.0 when no scaling is needed.
- */
-function computeFitScale(
-  positions: Array<{ x: number; y: number }>,
-  aspect: number
-): number {
-  if (positions.length === 0) return 1;
-  // Include half a node footprint in the bounds so node edges don't clip.
-  const halfW = 1.0 + 0.3; // node half-width + padding
-  const halfH = 0.425 + 0.3;
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minY = Infinity;
-  let maxY = -Infinity;
-  for (const p of positions) {
-    minX = Math.min(minX, p.x - halfW);
-    maxX = Math.max(maxX, p.x + halfW);
-    minY = Math.min(minY, p.y - halfH);
-    maxY = Math.max(maxY, p.y + halfH);
-  }
-  const spanX = maxX - minX;
-  const spanY = maxY - minY;
-  // Camera: fov 50° at z=12 → visible height at z=0 ≈ 11.19. Width derives
-  // from the actual viewport aspect, not a hardcoded 16:9. 90% keeps edges
-  // off the frame.
-  const safeH = 11.19 * 0.9;
-  const safeW = safeH * aspect;
-  const scale = Math.min(safeW / spanX, safeH / spanY, 1);
-  return scale;
-}
-
-/** Max bucket size when ranks are the keys. */
 function maxBucketSize(ranks: number[]): number {
   const counts: Record<number, number> = {};
   for (const r of ranks) counts[r] = (counts[r] ?? 0) + 1;
   return Math.max(1, ...Object.values(counts));
 }
 
-/** Scale an object from its current scale to target over `durationMs`. */
-function makeScaleIn(
-  obj: THREE.Object3D,
-  target: number,
-  durationMs: number
-): (dt: number) => void {
-  let t = 0;
-  const startScale = obj.scale.x;
-  return (dt: number) => {
-    if (t >= durationMs / 1000) return;
-    t += dt;
-    const p = Math.min(1, t / (durationMs / 1000));
-    // Ease-out-cubic.
-    const eased = 1 - Math.pow(1 - p, 3);
-    const s = startScale + (target - startScale) * eased;
-    obj.scale.setScalar(s);
-  };
+function computeBounds(positions: Array<{ x: number; y: number }>): {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+} {
+  if (positions.length === 0) {
+    return { minX: -NODE_W / 2, minY: -NODE_H / 2, maxX: NODE_W / 2, maxY: NODE_H / 2 };
+  }
+  const halfW = NODE_W / 2;
+  const halfH = NODE_H / 2;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of positions) {
+    minX = Math.min(minX, p.x - halfW);
+    minY = Math.min(minY, p.y - halfH);
+    maxX = Math.max(maxX, p.x + halfW);
+    maxY = Math.max(maxY, p.y + halfH);
+  }
+  return { minX, minY, maxX, maxY };
 }
 
-function resolveColor(input: string): string {
-  return input.startsWith('palette.') ? PALETTE_DEFAULTS[input] ?? '#334155' : input;
-}
-
-function parseColor(css: string): number {
-  // Handle #rrggbb; fall back to neutral slate if anything else.
-  if (/^#[0-9a-fA-F]{6}$/.test(css)) return parseInt(css.slice(1), 16);
-  return 0x334155;
-}
-
-/** Helper: create a CSS2D label that always faces the camera and stays crisp. */
-function makeCSS2DLabel(el: HTMLElement): CSS2DObject {
-  return new CSS2DObject(el);
-}

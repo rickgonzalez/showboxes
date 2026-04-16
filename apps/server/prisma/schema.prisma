@@ -30,6 +30,11 @@ model Analysis {
   // signals + the user's mode pick + the derived 1b budgets/prose bands.
   // See docs/AGENT-1-TUNABLES.md §5 and lib/agents/trace-mode.ts.
   tunables  Json?
+  // Per-stage cost blobs captured at completion. Shape: StageCost[] from
+  // lib/costs/rollup.ts — one entry for the analysis session, optionally
+  // one for the triage session that preceded it. Scripts derived from
+  // this Analysis read these forward into their own rollup.
+  stageCosts Json?
   error     String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

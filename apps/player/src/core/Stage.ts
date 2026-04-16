@@ -75,11 +75,16 @@ export class Stage {
   }
 
   private resize(): void {
-    const rect = this.canvas.getBoundingClientRect();
-    this.width = rect.width;
-    this.height = rect.height;
-    this.canvas.width = Math.max(1, Math.round(rect.width * this.dpr));
-    this.canvas.height = Math.max(1, Math.round(rect.height * this.dpr));
+    // Use clientWidth/Height — untransformed CSS size. getBoundingClientRect
+    // returns post-transform pixels, which breaks when the player is mounted
+    // inside a CSS `transform: scale(...)` wrapper. Templates and showTextBox
+    // positioning are authored against the design surface, not rendered pixels.
+    const w = this.canvas.clientWidth;
+    const h = this.canvas.clientHeight;
+    this.width = w;
+    this.height = h;
+    this.canvas.width = Math.max(1, Math.round(w * this.dpr));
+    this.canvas.height = Math.max(1, Math.round(h * this.dpr));
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
   }
 

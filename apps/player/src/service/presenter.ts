@@ -31,14 +31,26 @@ export interface TextBoxHandle {
 export class Presenter {
   readonly stage: Stage;
   readonly domRoot: HTMLElement;
+  /**
+   * Common ancestor of the canvas + DOM + 3D layers. Scene transitions
+   * animate this element so all layers move together (transitioning them
+   * independently causes a visible flash at the handoff).
+   */
+  readonly stageRoot: HTMLElement;
   /** 3D layer host — lazily created the first time a template asks for it. */
   private stage3dHost: HTMLElement | null;
   private _stage3d: Stage3D | null = null;
 
-  constructor(canvas: HTMLCanvasElement, domRoot: HTMLElement, stage3dHost?: HTMLElement) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    domRoot: HTMLElement,
+    stage3dHost?: HTMLElement,
+    stageRoot?: HTMLElement
+  ) {
     this.stage = new Stage(canvas);
     this.domRoot = domRoot;
     this.stage3dHost = stage3dHost ?? null;
+    this.stageRoot = stageRoot ?? domRoot.parentElement ?? domRoot;
   }
 
   /**

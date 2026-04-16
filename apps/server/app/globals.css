@@ -1,0 +1,375 @@
+/* Codesplain — customer-facing landing page styles.
+   Bright & editorial direction. Sans-serif throughout.
+   Brand blues: #1d7ab7 (deep) and #6fc4eb (sky). No orange. */
+
+:root {
+  color-scheme: light;
+  /* Very soft sky-cream so the light blue reads cleanly on top. */
+  --bg:             #f5faff;
+  --bg-alt:         #e9f2fb;
+  --surface:        #ffffff;
+  --ink:            #0e2235;
+  --ink-soft:       #3e5572;
+  --ink-muted:      #7a8ba2;
+
+  /* Brand */
+  --brand-deep:     #1d7ab7;
+  --brand-sky:      #6fc4eb;
+  --brand-deep-ink: #155a88;   /* hover/pressed */
+  --brand-soft:     #d9ecf8;   /* pale blue wash */
+
+  /* Supporting accents (used very sparingly, not as CTA color) */
+  --mint:           #b6f0d9;
+  --lilac:          #cfd0ff;
+
+  --border:         rgba(14, 34, 53, 0.08);
+  --radius-lg:      20px;
+  --radius-md:      12px;
+
+  /* Sans-serif stack. Use Inter for everything; loosen letter-spacing on big heads. */
+  --font-sans:      "Inter", "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:      "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+html {
+  min-height: 100vh;
+  background-color: var(--bg);
+}
+
+body {
+  min-height: 100vh;
+  background-color: var(--bg-alt);
+}
+
+a { color: inherit; text-decoration: none; }
+button { font: inherit; cursor: pointer; }
+
+/* ---------- layout primitives ---------- */
+
+.container {
+  width: 100%;
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 0 28px;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 18px 28px;
+  max-width: 1160px;
+  margin: 0 auto;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.brand img {
+  height: 64px;
+  width: auto;
+  display: block;
+}
+
+@media (max-width: 720px) {
+  .brand img { height: 48px; }
+}
+.nav-links { display: flex; gap: 28px; color: var(--ink-soft); font-size: 15px; font-weight: 500; }
+.nav-links a:hover { color: var(--brand-deep); }
+.nav-cta {
+  background: var(--brand-deep);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  transition: transform 120ms ease, background 120ms ease;
+}
+.nav-cta:hover { transform: translateY(-1px); background: var(--brand-deep-ink); }
+
+/* ---------- hero ---------- */
+
+.hero {
+  position: relative;
+  padding: 40px 0 120px;
+  overflow: hidden;
+}
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 40px;
+  align-items: center;
+}
+.eyebrow {
+  display: inline-block;
+  background: var(--brand-soft);
+  color: var(--brand-deep-ink);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin-bottom: 20px;
+}
+.hero h1 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: clamp(44px, 6vw, 72px);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  margin: 0 0 20px;
+}
+.hero h1 .accent {
+  color: var(--brand-deep);
+}
+.hero h1 .accent-light {
+  color: var(--brand-sky);
+}
+.hero p.lead {
+  font-size: 20px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  margin: 0 0 32px;
+  max-width: 520px;
+}
+.cta-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.btn-primary {
+  background: var(--brand-deep);
+  color: #fff;
+  border: none;
+  padding: 14px 22px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  transition: transform 150ms ease, background 150ms ease, box-shadow 150ms ease;
+  box-shadow: 0 10px 30px -14px rgba(29, 122, 183, 0.55);
+}
+.btn-primary:hover {
+  transform: translateY(-2px);
+  background: var(--brand-deep-ink);
+  box-shadow: 0 14px 36px -14px rgba(29, 122, 183, 0.7);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--border);
+  padding: 14px 22px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 500;
+}
+.btn-ghost:hover { background: var(--surface); border-color: var(--brand-sky); color: var(--brand-deep); }
+
+.hero-visual {
+  position: relative;
+  /* Explicit width floor — without this, the grid track + aspect-ratio
+     combo can collapse to 0×0 when the child demands 100%/100%. */
+  width: min(520px, 100%);
+  aspect-ratio: 1 / 1;
+  min-height: 420px;
+  margin-left: auto;
+  justify-self: end;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* Halo behind the Lottie — tinted with the brand sky. */
+.hero-visual::before {
+  content: "";
+  position: absolute; inset: 10% 10% 10% 10%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 40%, var(--brand-soft), transparent 70%);
+  filter: blur(8px);
+  z-index: 0;
+}
+.hero-visual > * { position: relative; z-index: 1; }
+
+/* The player's global stylesheet paints :root dark (#0b1020 / #e6e8ee) — fine
+   for the standalone player app, but it bleeds into this page when we import
+   @showboxes/player/styles.css. Scope a light override inside the hero embed
+   so backgrounds and body text render against white. Template-specific styles
+   (code panes, diagrams) keep their own palette-driven colors. */
+.hero-player-scope,
+.hero-player-scope .sb-presentation,
+.hero-player-scope .sb-dom-layer {
+  background: #000000;
+  color: #e6e8ee;
+}
+
+/* ---------- section: how it works ---------- */
+
+.section { padding: 90px 0; }
+.section h2 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: clamp(32px, 4vw, 46px);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+  margin: 0 0 14px;
+  max-width: 760px;
+}
+.section .kicker {
+  color: var(--brand-deep);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  margin-top: 48px;
+}
+.step {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+}
+.step:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 30px 60px -40px rgba(14, 34, 53, 0.35);
+  border-color: var(--brand-sky);
+}
+.step .number {
+  font-family: var(--font-sans);
+  font-size: 40px;
+  font-weight: 600;
+  color: var(--brand-sky);
+  line-height: 1;
+  margin-bottom: 16px;
+  letter-spacing: -0.03em;
+}
+.step h3 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.step p  { margin: 0; color: var(--ink-soft); font-size: 15px; line-height: 1.55; }
+.step .art {
+  aspect-ratio: 16 / 9;
+  margin: -6px -6px 16px;
+  border-radius: var(--radius-md);
+  background: var(--bg-alt);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+
+/* ---------- section: what you get ---------- */
+
+.wyg {
+  background: var(--bg-alt);
+  border-radius: 32px;
+  padding: 80px 56px;
+  margin: 40px 0;
+  display: grid;
+  grid-template-columns: 1fr 1.1fr;
+  gap: 48px;
+  align-items: center;
+}
+.wyg ul { list-style: none; margin: 24px 0 0; padding: 0; }
+.wyg li {
+  display: flex; gap: 14px; align-items: flex-start;
+  padding: 16px 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 16px;
+  line-height: 1.55;
+}
+.wyg li:last-child { border-bottom: none; }
+.wyg li .dot {
+  flex: 0 0 10px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--brand-deep);
+  margin-top: 8px;
+}
+
+/* ---------- pricing teaser ---------- */
+
+.pricing-teaser {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 40px;
+  align-items: center;
+}
+.price-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  box-shadow: 0 30px 60px -40px rgba(14, 34, 53, 0.28);
+}
+.price-card .badge {
+  display: inline-block;
+  background: var(--brand-sky);
+  color: var(--brand-deep-ink);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+.price-card .amount {
+  font-family: var(--font-sans);
+  font-size: 44px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--brand-deep);
+}
+.price-card .amount small {
+  font-size: 16px;
+  color: var(--ink-muted);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+.price-card p { color: var(--ink-soft); line-height: 1.55; margin: 12px 0 24px; }
+
+/* ---------- footer ---------- */
+
+footer {
+  padding: 60px 0 80px;
+  color: var(--ink-muted);
+  font-size: 14px;
+  border-top: 1px solid var(--border);
+}
+footer .row {
+  display: flex; justify-content: space-between; align-items: center; gap: 24px;
+  flex-wrap: wrap;
+}
+footer a:hover { color: var(--brand-deep); }
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 860px) {
+  .hero-grid, .wyg, .pricing-teaser { grid-template-columns: 1fr; }
+  .steps { grid-template-columns: 1fr; }
+  .wyg { padding: 48px 28px; }
+  .hero-visual { margin: 0 auto; max-width: 380px; }
+}
+
+/* Respect reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .step { transition: none; }
+  .btn-primary, .nav-cta { transition: none; }
+}

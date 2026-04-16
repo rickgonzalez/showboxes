@@ -1,4 +1,5 @@
 import type { Template, TemplateHandle } from './registry';
+import { PALETTE_DEFAULTS, resolveColor } from './palette';
 
 /**
  * compare-split — side-by-side comparison of two parallel options.
@@ -35,18 +36,6 @@ interface CompareSplitContent {
   right: PanelSpec;
   divider?: 'vs' | 'or' | '→' | 'none';
   staggerMs?: number;
-}
-
-const PALETTE_DEFAULTS: Record<string, string> = {
-  'palette.primary': '#60a5fa',
-  'palette.secondary': '#a78bfa',
-  'palette.accent': '#34d399',
-};
-
-function resolveColor(input: string | undefined, fallback: string): string {
-  if (!input) return fallback;
-  if (input.startsWith('palette.')) return PALETTE_DEFAULTS[input] ?? fallback;
-  return input;
 }
 
 export const compareSplitTemplate: Template = {

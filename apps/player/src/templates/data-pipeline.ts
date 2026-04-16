@@ -73,19 +73,11 @@ function renderDataBlock(
   highlight?: string,
 ): HTMLElement {
   const block = document.createElement('div');
-  Object.assign(block.style, {
-    fontSize: '13px',
-    lineHeight: '1.6',
-    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-  });
+  block.className = 'sb-pipeline-block';
 
   if (mode === 'table' && Array.isArray(data)) {
     const table = document.createElement('table');
-    Object.assign(table.style, {
-      width: '100%',
-      borderCollapse: 'collapse',
-      fontSize: '12px',
-    });
+    table.className = 'sb-pipeline-table';
 
     // Header row from first item's keys
     if (data.length > 0) {
@@ -93,17 +85,8 @@ function renderDataBlock(
       const headerRow = document.createElement('tr');
       Object.keys(data[0]).forEach((key) => {
         const th = document.createElement('th');
+        th.className = 'sb-pipeline-th';
         th.textContent = key;
-        Object.assign(th.style, {
-          textAlign: 'left',
-          padding: '4px 8px',
-          borderBottom: '1px solid #334155',
-          color: '#94a3b8',
-          fontWeight: '500',
-          fontSize: '11px',
-          textTransform: 'uppercase',
-          letterSpacing: '0.05em',
-        });
         headerRow.appendChild(th);
       });
       thead.appendChild(headerRow);
@@ -116,13 +99,9 @@ function renderDataBlock(
       const tr = document.createElement('tr');
       Object.entries(row).forEach(([key, val]) => {
         const td = document.createElement('td');
+        td.className =
+          key === highlight ? 'sb-pipeline-td sb-highlight' : 'sb-pipeline-td';
         td.textContent = String(val);
-        Object.assign(td.style, {
-          padding: '4px 8px',
-          borderBottom: '1px solid #1e293b',
-          color: key === highlight ? '#f59e0b' : '#e2e8f0',
-          fontWeight: key === highlight ? '700' : '400',
-        });
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
@@ -134,19 +113,13 @@ function renderDataBlock(
     const obj = Array.isArray(data) ? data[0] ?? {} : data;
     Object.entries(obj).forEach(([key, val]) => {
       const row = document.createElement('div');
-      Object.assign(row.style, {
-        display: 'flex',
-        justifyContent: 'space-between',
-        padding: '4px 0',
-        fontSize: '20px',
-        fontWeight: key === highlight ? '700' : '600',
-        color: key === highlight ? '#f59e0b' : '#f8fafc',
-      });
+      row.className =
+        key === highlight
+          ? 'sb-pipeline-value-row sb-highlight'
+          : 'sb-pipeline-value-row';
       const kSpan = document.createElement('span');
+      kSpan.className = 'sb-pipeline-value-key';
       kSpan.textContent = key;
-      kSpan.style.color = '#94a3b8';
-      kSpan.style.fontSize = '14px';
-      kSpan.style.alignSelf = 'center';
       const vSpan = document.createElement('span');
       vSpan.textContent = typeof val === 'number' ? val.toLocaleString() : String(val);
       row.appendChild(kSpan);
@@ -158,14 +131,10 @@ function renderDataBlock(
     const obj = Array.isArray(data) ? data[0] ?? {} : data;
     Object.entries(obj).forEach(([key, val]) => {
       const row = document.createElement('div');
-      Object.assign(row.style, {
-        display: 'flex',
-        justifyContent: 'space-between',
-        padding: '3px 0',
-        borderBottom: '1px solid #1e293b',
-        color: key === highlight ? '#f59e0b' : '#e2e8f0',
-        fontWeight: key === highlight ? '700' : '400',
-      });
+      row.className =
+        key === highlight
+          ? 'sb-pipeline-breakdown-row sb-highlight'
+          : 'sb-pipeline-breakdown-row';
       const kSpan = document.createElement('span');
       kSpan.textContent = key;
       const vSpan = document.createElement('span');
@@ -244,41 +213,19 @@ export const dataPipelineTemplate: Template = {
 
     // ── Outer wrapper ────────────────────────────────────────────
     const wrapper = document.createElement('div');
-    wrapper.className = 'data-pipeline';
-    Object.assign(wrapper.style, {
-      position: 'absolute',
-      inset: '0',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      padding: '24px',
-      fontFamily: 'Inter, system-ui, sans-serif',
-      color: '#f8fafc',
-      overflowY: 'auto',
-    });
+    wrapper.className = 'sb-pipeline-wrapper';
 
     // Title
     if (c.title) {
       const titleEl = document.createElement('h2');
+      titleEl.className = 'sb-pipeline-title';
       titleEl.textContent = c.title;
-      Object.assign(titleEl.style, {
-        fontSize: '22px',
-        fontWeight: '700',
-        marginBottom: '24px',
-      });
       wrapper.appendChild(titleEl);
     }
 
     // ── Pipeline column ──────────────────────────────────────────
     const column = document.createElement('div');
-    Object.assign(column.style, {
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      gap: '0',
-      width: '100%',
-      maxWidth: '520px',
-    });
+    column.className = 'sb-pipeline-column';
 
     const stageCards: HTMLElement[] = [];
 
@@ -291,37 +238,18 @@ export const dataPipelineTemplate: Template = {
       highlight?: string,
     ): HTMLElement => {
       const card = document.createElement('div');
-      Object.assign(card.style, {
-        width: '100%',
-        background: '#1e293b',
-        borderRadius: '10px',
-        padding: '14px 18px',
-        border: '1px solid #334155',
-        opacity: '0',
-        transform: 'translateY(12px)',
-        transition: `opacity 500ms ease, transform 500ms ease, box-shadow 300ms ease`,
-      });
+      card.className = 'sb-pipeline-card';
 
       const header = document.createElement('div');
-      Object.assign(header.style, {
-        fontSize: '11px',
-        fontWeight: '600',
-        textTransform: 'uppercase',
-        letterSpacing: '0.08em',
-        color: '#a855f7',
-        marginBottom: subText ? '2px' : '10px',
-      });
+      header.className = subText
+        ? 'sb-pipeline-card-header sb-with-sub'
+        : 'sb-pipeline-card-header';
       header.textContent = headerText;
       card.appendChild(header);
 
       if (subText) {
         const sub = document.createElement('div');
-        Object.assign(sub.style, {
-          fontSize: '14px',
-          fontWeight: '500',
-          color: '#e2e8f0',
-          marginBottom: '10px',
-        });
+        sub.className = 'sb-pipeline-card-sub';
         sub.textContent = subText;
         card.appendChild(sub);
       }
@@ -333,13 +261,7 @@ export const dataPipelineTemplate: Template = {
     // Helper: chevron arrow between cards
     const makeArrow = (): HTMLElement => {
       const arrow = document.createElement('div');
-      Object.assign(arrow.style, {
-        fontSize: '18px',
-        color: '#475569',
-        padding: '4px 0',
-        opacity: '0',
-        transition: 'opacity 400ms ease',
-      });
+      arrow.className = 'sb-pipeline-arrow';
       arrow.textContent = '▼';
       return arrow;
     };
@@ -379,19 +301,11 @@ export const dataPipelineTemplate: Template = {
     const timers: number[] = [];
 
     // Reveal input immediately
-    requestAnimationFrame(() => {
-      inputCard.style.opacity = '1';
-      inputCard.style.transform = 'translateY(0)';
-    });
+    requestAnimationFrame(() => inputCard.classList.add('sb-visible'));
 
     const revealStage = (index: number) => {
-      if (arrows[index]) {
-        arrows[index].style.opacity = '1';
-      }
-      if (stageCards[index]) {
-        stageCards[index].style.opacity = '1';
-        stageCards[index].style.transform = 'translateY(0)';
-      }
+      arrows[index]?.classList.add('sb-visible');
+      stageCards[index]?.classList.add('sb-visible');
     };
 
     stages.forEach((_, i) => {
@@ -409,11 +323,12 @@ export const dataPipelineTemplate: Template = {
         if (Number.isNaN(idx) || !stageCards[idx]) return;
         // Ensure revealed
         revealStage(idx);
-        // Pulse
-        stageCards[idx].style.boxShadow = '0 0 24px rgba(168, 85, 247, 0.5)';
-        setTimeout(() => {
-          stageCards[idx].style.boxShadow = 'none';
-        }, 1400);
+        // Pulse via CSS class — see .sb-pipeline-card.sb-emphasize.
+        const card = stageCards[idx];
+        card.classList.add('sb-emphasize');
+        timers.push(
+          window.setTimeout(() => card.classList.remove('sb-emphasize'), 1400),
+        );
       },
     };
   },

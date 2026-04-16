@@ -78,121 +78,60 @@ export const stepJourneyTemplate: Template = {
 
     // ── DOM container ──────────────────────────────────────────────
     const wrapper = document.createElement('div');
-    wrapper.className = 'step-journey';
-    Object.assign(wrapper.style, {
-      position: 'absolute',
-      inset: '0',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '32px 24px',
-      fontFamily: 'Inter, system-ui, sans-serif',
-      color: '#f8fafc',
-    });
+    wrapper.className = 'sb-step-journey';
+    // Per-instance theming: active color and per-step transition pacing flow
+    // through CSS custom properties so the static classes can stay generic.
+    wrapper.style.setProperty('--sb-step-active', activeColor);
+    wrapper.style.setProperty('--sb-step-reveal-ms', `${Math.round(staggerMs * 0.5)}ms`);
 
     // Optional title
     if (c.title) {
       const titleEl = document.createElement('h2');
+      titleEl.className = 'sb-step-journey-title';
       titleEl.textContent = c.title;
-      Object.assign(titleEl.style, {
-        fontSize: '24px',
-        fontWeight: '700',
-        marginBottom: '40px',
-        textAlign: 'center',
-      });
       wrapper.appendChild(titleEl);
     }
 
     // ── Step row ───────────────────────────────────────────────────
     const row = document.createElement('div');
-    Object.assign(row.style, {
-      display: 'flex',
-      alignItems: 'flex-start',
-      justifyContent: 'center',
-      gap: '0',
-      width: '100%',
-      maxWidth: '900px',
-      position: 'relative',
-    });
+    row.className = 'sb-step-journey-row';
 
     const stepEls: HTMLElement[] = [];
+    const circleEls: HTMLElement[] = [];
     const connectorEls: HTMLElement[] = [];
 
     steps.forEach((step, i) => {
       // ── Connector line (before each step except the first) ─────
       if (i > 0) {
         const connector = document.createElement('div');
-        Object.assign(connector.style, {
-          flex: '1',
-          height: '3px',
-          background: '#334155',
-          alignSelf: 'center',
-          marginTop: '20px', // vertically center with the icon circle
-          transition: `background ${staggerMs * 0.4}ms ease`,
-          opacity: '0.3',
-        });
+        connector.className = 'sb-step-journey-connector';
         connectorEls.push(connector);
         row.appendChild(connector);
       }
 
       // ── Step card ──────────────────────────────────────────────
       const card = document.createElement('div');
-      Object.assign(card.style, {
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        minWidth: '80px',
-        maxWidth: '120px',
-        opacity: '0.25',
-        transform: 'translateY(8px)',
-        transition: `opacity ${staggerMs * 0.5}ms ease, transform ${staggerMs * 0.5}ms ease, filter 300ms ease`,
-      });
+      card.className = 'sb-step-journey-card';
 
       const circle = document.createElement('div');
-      Object.assign(circle.style, {
-        width: '44px',
-        height: '44px',
-        borderRadius: '50%',
-        border: `3px solid #334155`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '20px',
-        marginBottom: '8px',
-        transition: `border-color ${staggerMs * 0.4}ms ease, box-shadow 300ms ease`,
-        background: '#1e293b',
-      });
+      circle.className = 'sb-step-journey-circle';
       circle.textContent = step.icon;
       card.appendChild(circle);
 
       const label = document.createElement('div');
-      Object.assign(label.style, {
-        fontSize: '13px',
-        fontWeight: '600',
-        textAlign: 'center',
-        lineHeight: '1.3',
-        marginBottom: '4px',
-      });
+      label.className = 'sb-step-journey-label';
       label.textContent = step.label;
       card.appendChild(label);
 
       if (step.detail) {
         const detail = document.createElement('div');
-        Object.assign(detail.style, {
-          fontSize: '11px',
-          color: '#94a3b8',
-          textAlign: 'center',
-          lineHeight: '1.3',
-        });
+        detail.className = 'sb-step-journey-detail';
         detail.textContent = step.detail;
         card.appendChild(detail);
       }
 
-      // Store circle ref for emphasize
-      (card as any).__circle = circle;
-
       stepEls.push(card);
+      circleEls.push(circle);
       row.appendChild(card);
     });
 
@@ -205,15 +144,10 @@ export const stepJourneyTemplate: Template = {
     const revealStep = (index: number) => {
       const card = stepEls[index];
       if (!card) return;
-      card.style.opacity = '1';
-      card.style.transform = 'translateY(0)';
-      const circle = (card as any).__circle as HTMLElement;
-      circle.style.borderColor = activeColor;
-
+      card.classList.add('sb-visible');
       // Light up the connector leading into this step
       if (index > 0 && connectorEls[index - 1]) {
-        connectorEls[index - 1].style.background = activeColor;
-        connectorEls[index - 1].style.opacity = '1';
+        connectorEls[index - 1].classList.add('sb-visible');
       }
     };
 
@@ -229,15 +163,15 @@ export const stepJourneyTemplate: Template = {
       },
       emphasize(target: string) {
         const idx = parseInt(target, 10);
-        if (Number.isNaN(idx) || !stepEls[idx]) return;
+        if (Number.isNaN(idx) || !circleEls[idx]) return;
         // Ensure the step is revealed
         revealStep(idx);
-        // Pulse the circle
-        const circle = (stepEls[idx] as any).__circle as HTMLElement;
-        circle.style.boxShadow = `0 0 20px ${activeColor}`;
-        setTimeout(() => {
-          circle.style.boxShadow = 'none';
-        }, 1200);
+        // Pulse the circle via the emphasize class (CSS handles the glow).
+        const circle = circleEls[idx];
+        circle.classList.add('sb-emphasize');
+        timers.push(
+          window.setTimeout(() => circle.classList.remove('sb-emphasize'), 1200),
+        );
       },
     };
   },

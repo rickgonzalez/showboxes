@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
     // Next 15 has `after` stable; no experimental flag needed. Kept for
     // documentation.
   },
+  // The player package ships TS/TSX source (no prebuild step). Next must
+  // transpile it the same way it transpiles app code.
+  transpilePackages: ['@showboxes/player', '@showboxes/shared-types'],
   // CORS for the player's dev server on 5173/5174. Production is same-origin.
   async headers() {
     return [

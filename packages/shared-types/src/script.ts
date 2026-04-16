@@ -83,7 +83,17 @@ export interface ScriptRecord {
   data: PresentationScript | null;
   focusInstructions: string | null;
   producerModel: string | null;
-  usage: { inputTokens: number; outputTokens: number } | null;
+  /**
+   * Cost info written at script-create time. New shape is the full
+   * CostRollup (see apps/server/lib/costs/rollup.ts) — a discriminated
+   * blob with `version: 1`, per-stage breakdown, and rolled-up totals
+   * in tokens + USD. Older rows may still hold the legacy
+   * `{ inputTokens, outputTokens }` shape, which callers should treat
+   * as a producer-only snapshot. Clients can discriminate on the
+   * presence of the `version` field. Kept loosely typed here so this
+   * package doesn't depend on the server's cost module.
+   */
+  usage: Record<string, unknown> | null;
   error: string | null;
   createdAt: string;
   updatedAt: string;

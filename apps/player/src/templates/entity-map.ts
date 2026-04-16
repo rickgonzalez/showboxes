@@ -132,106 +132,60 @@ export const entityMapTemplate: Template = {
 
     // ── Wrapper ──────────────────────────────────────────────────
     const wrapper = document.createElement('div');
-    wrapper.className = 'entity-map';
-    Object.assign(wrapper.style, {
-      position: 'absolute',
-      inset: '0',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      padding: '24px',
-      fontFamily: 'Inter, system-ui, sans-serif',
-      color: '#f8fafc',
-    });
+    wrapper.className = 'sb-entity-map-wrapper';
 
     // Title
     if (c.title) {
       const titleEl = document.createElement('h2');
+      titleEl.className = 'sb-entity-map-title';
       titleEl.textContent = c.title;
-      Object.assign(titleEl.style, {
-        fontSize: '22px',
-        fontWeight: '700',
-        marginBottom: '20px',
-      });
       wrapper.appendChild(titleEl);
     }
 
     // ── Layout container (relative, so SVG overlay can be absolute) ─
     const container = document.createElement('div');
-    Object.assign(container.style, {
-      position: 'relative',
-      width: '100%',
-      maxWidth: '800px',
-      flex: '1',
-    });
+    container.className = 'sb-entity-map-container';
 
     // ── Entity grid ──────────────────────────────────────────────
     const cols = entities.length <= 4 ? 2 : entities.length <= 6 ? 3 : 4;
     const grid = document.createElement('div');
-    Object.assign(grid.style, {
-      display: 'grid',
-      gridTemplateColumns: `repeat(${cols}, 1fr)`,
-      justifyItems: 'center',
-      gap: '56px 48px',
-      padding: '16px',
-      position: 'relative',
-      zIndex: '2',
-    });
+    grid.className = 'sb-entity-map-grid';
+    grid.style.setProperty('--sb-entity-cols', String(cols));
 
     const cardMap = new Map<string, HTMLElement>();
+    const timers: number[] = [];
 
     entities.forEach((entity, i) => {
       const color = entity.color ?? DEFAULT_COLOR;
       const card = document.createElement('div');
-      Object.assign(card.style, {
-        background: '#1e293b',
-        borderRadius: '12px',
-        padding: '12px 14px',
-        border: `2px solid ${color}`,
-        width: 'fit-content',
-        maxWidth: '200px',
-        minWidth: '120px',
-        opacity: '0',
-        transform: 'scale(0.9)',
-        transition: 'opacity 400ms ease, transform 400ms ease, box-shadow 300ms ease',
-      });
+      card.className = 'sb-entity-map-card';
+      // Per-entity color drives both the border and the emphasize halo.
+      card.style.setProperty('--sb-entity-color', color);
+      card.style.setProperty('--sb-entity-glow', `${color}66`);
 
       // Icon + label row
       const header = document.createElement('div');
-      Object.assign(header.style, {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        marginBottom: entity.fields?.length ? '8px' : '0',
-      });
+      header.className = entity.fields?.length
+        ? 'sb-entity-map-header sb-with-fields'
+        : 'sb-entity-map-header';
       if (entity.icon) {
         const iconEl = document.createElement('span');
+        iconEl.className = 'sb-entity-map-icon';
         iconEl.textContent = entity.icon;
-        iconEl.style.fontSize = '22px';
         header.appendChild(iconEl);
       }
       const labelEl = document.createElement('span');
+      labelEl.className = 'sb-entity-map-label';
       labelEl.textContent = entity.label;
-      Object.assign(labelEl.style, {
-        fontSize: '15px',
-        fontWeight: '700',
-        color: '#f8fafc',
-      });
       header.appendChild(labelEl);
       card.appendChild(header);
 
       // Field list
       if (entity.fields?.length) {
         const fieldList = document.createElement('div');
-        Object.assign(fieldList.style, {
-          fontSize: '10px',
-          color: '#94a3b8',
-          lineHeight: '1.5',
-          fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-          paddingLeft: entity.icon ? '30px' : '0',
-          whiteSpace: 'normal',
-          wordBreak: 'break-word',
-        });
+        fieldList.className = entity.icon
+          ? 'sb-entity-map-fields sb-with-icon'
+          : 'sb-entity-map-fields';
         fieldList.textContent = entity.fields.join(', ');
         card.appendChild(fieldList);
       }
@@ -240,25 +194,16 @@ export const entityMapTemplate: Template = {
       grid.appendChild(card);
 
       // Stagger reveal
-      setTimeout(() => {
-        card.style.opacity = '1';
-        card.style.transform = 'scale(1)';
-      }, i * staggerMs);
+      timers.push(
+        window.setTimeout(() => card.classList.add('sb-visible'), i * staggerMs),
+      );
     });
 
     container.appendChild(grid);
 
     // ── SVG overlay for relationship lines ────────────────────────
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    Object.assign(svg.style, {
-      position: 'absolute',
-      inset: '0',
-      width: '100%',
-      height: '100%',
-      zIndex: '1',
-      pointerEvents: 'none',
-      overflow: 'visible',
-    });
+    svg.setAttribute('class', 'sb-entity-map-svg');
     container.appendChild(svg);
 
     wrapper.appendChild(container);
@@ -359,12 +304,14 @@ export const entityMapTemplate: Template = {
     };
 
     // Draw after a brief layout settle
-    const drawTimer = setTimeout(drawLines, entities.length * staggerMs + 200);
+    timers.push(
+      window.setTimeout(drawLines, entities.length * staggerMs + 200),
+    );
 
     // ── Handle ─────────────────────────────────────────────────
     return {
       dismiss() {
-        clearTimeout(drawTimer);
+        timers.forEach(clearTimeout);
         wrapper.remove();
       },
       emphasize(target: string) {
@@ -372,24 +319,26 @@ export const entityMapTemplate: Template = {
         const card = cardMap.get(target);
         if (!card) return;
 
-        // Pulse the card
-        const origColor = card.style.borderColor;
-        card.style.boxShadow = `0 0 24px ${origColor}66`;
-        setTimeout(() => {
-          card.style.boxShadow = 'none';
-        }, 1400);
+        // Pulse the card via CSS class — halo color comes from
+        // `--sb-entity-glow` set when the card was built.
+        card.classList.add('sb-emphasize');
+        timers.push(
+          window.setTimeout(() => card.classList.remove('sb-emphasize'), 1400),
+        );
 
-        // Highlight connected lines
+        // Highlight connected lines (SVG attributes — kept inline).
         const lines = linesByEntity.get(target) ?? [];
         lines.forEach((g) => {
           const line = g.querySelector('line');
           if (line) {
             line.setAttribute('stroke', '#f59e0b');
             line.setAttribute('stroke-width', '3');
-            setTimeout(() => {
-              line.setAttribute('stroke', '#475569');
-              line.setAttribute('stroke-width', '2');
-            }, 1400);
+            timers.push(
+              window.setTimeout(() => {
+                line.setAttribute('stroke', '#475569');
+                line.setAttribute('stroke-width', '2');
+              }, 1400),
+            );
           }
         });
       },

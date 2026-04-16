@@ -5,8 +5,11 @@ import { prisma } from '@/lib/prisma';
 import { ensureProvisioned } from '@/lib/managed-agents/bootstrap';
 import { startSession, runSessionToCompletion } from '@/lib/agents/session';
 import { codeAnalysisGnome, gnomeVersion } from '@/lib/agents/code-analysis.gnome';
+import { codeTriageGnome } from '@/lib/agents/code-triage.gnome';
 import { renderCodeAnalysisPrompt } from '@/lib/agents/render-prompt';
 import { traceMode } from '@/lib/agents/trace-mode';
+import { fetchSessionTokens } from '@/lib/costs/managed-agents-usage';
+import { buildStageCost } from '@/lib/costs/rollup';
 import { DEFAULT_DEPTH, type TriageReport } from '@showboxes/shared-types';
 
 // Agent 1 runs long. Vercel default function timeout (10s Hobby / 60s Pro)
@@ -35,6 +38,11 @@ const bodySchema = z.object({
   // Optional pass-through from the triage step. Used only for the
   // tunables trace — opaque diagnostic blob, not validated structurally.
   triageReport: z.record(z.string(), z.unknown()).optional(),
+  // Optional — the Managed Agents session id from the triage step.
+  // When present, we fetch its final usage at completion and fold it
+  // into this Analysis's stageCosts so downstream Scripts can see
+  // triage cost without re-running anything.
+  triageSessionId: z.string().optional(),
 });
 
 export async function POST(req: Request) {
@@ -114,9 +122,30 @@ export async function POST(req: Request) {
   after(async () => {
     try {
       const result = await runSessionToCompletion(sessionId);
+
+      // Capture per-stage Anthropic usage so the downstream Script
+      // rollup can answer "what did this run cost me?" without a
+      // second round-trip. Failures here are non-fatal — we still
+      // want the analysis written.
+      const stageCosts = [];
+      if (parsed.triageSessionId) {
+        const triageTokens = await fetchSessionTokens(parsed.triageSessionId);
+        stageCosts.push(
+          buildStageCost('triage', codeTriageGnome.defaultModel, triageTokens),
+        );
+      }
+      const analysisTokens = await fetchSessionTokens(sessionId);
+      stageCosts.push(
+        buildStageCost('analysis', codeAnalysisGnome.defaultModel, analysisTokens),
+      );
+
       await prisma.analysis.update({
         where: { id: record.id },
-        data: { status: 'ready', data: result.analysis as unknown as object },
+        data: {
+          status: 'ready',
+          data: result.analysis as unknown as object,
+          stageCosts: stageCosts as unknown as object,
+        },
       });
     } catch (e) {
       await prisma.analysis.update({

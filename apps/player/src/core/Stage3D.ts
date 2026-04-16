@@ -121,9 +121,13 @@ export class Stage3D {
   }
 
   private syncSize(): void {
-    const rect = this.host.getBoundingClientRect();
-    this.width = rect.width;
-    this.height = rect.height;
+    // Use clientWidth/Height — these report the host's untransformed CSS
+    // size. getBoundingClientRect would return post-transform pixels, which
+    // breaks when the player is mounted inside a CSS `transform: scale(...)`
+    // wrapper (e.g. the codesplain hero embed). Templates author against
+    // the design surface size, not the rendered pixel size.
+    this.width = this.host.clientWidth;
+    this.height = this.host.clientHeight;
     if (this.width <= 0 || this.height <= 0) return;
 
     this.renderer.setPixelRatio(window.devicePixelRatio || 1);
