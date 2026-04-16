@@ -80,7 +80,7 @@ export const SUBMIT_PRESENTATION_SCRIPT_TOOL: Tool = {
             properties: {
               provider: {
                 type: 'string' as const,
-                enum: ['elevenlabs', 'kokoro', 'stub'],
+                enum: ['elevenlabs', 'kokoro', 'google-neural2', 'stub'],
               },
               voiceId: { type: 'string' as const },
               speed: { type: 'number' as const },

@@ -1,0 +1,10 @@
+gcloud config set project codesplaintts
+Everything GCP-side is done:
+
+gcloud installed and authed as rick@argonstudios.io
+Project codesplaintts selected
+texttospeech.googleapis.com enabled
+Service account showboxes-tts@codesplaintts.iam.gserviceaccount.com created with serviceusage.serviceUsageConsumer
+JSON key saved at /Users/rickgonzalez/.gcp/showboxes-tts.json
+Verified working — made a real Neural2 synth call and got MP3 back
+.env updated: replaced the old GOOGLE_TTS_KEY + GOOGLE_TTS_SERVICEACNT stubs with GOOGLE_APPLICATION_CREDENTIALS + GOOGLE_CLOUD_PROJECT

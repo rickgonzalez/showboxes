@@ -30,7 +30,7 @@ export interface TransitionSpec {
 }
 
 export interface VoiceConfig {
-  provider: 'elevenlabs' | 'kokoro' | 'stub';
+  provider: 'elevenlabs' | 'kokoro' | 'google-neural2' | 'stub';
   voiceId: string;
   /** 0.5 slow, 1.0 normal, 1.5 fast */
   speed: number;

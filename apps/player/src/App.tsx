@@ -7,11 +7,15 @@ import {
   ScriptPlayer,
   StubVoicePlayer,
   WebSpeechVoicePlayer,
+  GoogleCloudVoicePlayer,
   sampleScripts,
   type PlayerState,
   type PresentationScript,
   type VoicePlayer,
 } from './player';
+
+type VoiceMode = 'off' | 'webspeech' | 'google-neural2';
+const SERVER_URL = (import.meta.env.VITE_SERVER_URL ?? '').replace(/\/$/, '');
 import { PipelinePanel } from './pipeline/PipelinePanel';
 import { postNote } from './pipeline/api';
 
@@ -37,7 +41,7 @@ export function App() {
   const [selectedTemplate, setSelectedTemplate] = useState<string>(
     () => listTemplates().find((t) => t.demo)?.id ?? '',
   );
-  const [audioOn, setAudioOn] = useState(false);
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>('off');
   const [wpm, setWpm] = useState(150);
   // Context needed when the user flags a scene — populated whenever a
   // script loads. Sample scripts have null ids; pipeline scripts carry both.
@@ -79,9 +83,15 @@ export function App() {
       teardownPlayer();
       clearAll();
 
-      const voice: VoicePlayer = audioOn
-        ? new WebSpeechVoicePlayer({ lang: 'en-US', wordsPerMinute: wpm })
-        : new StubVoicePlayer();
+      const voice: VoicePlayer =
+        voiceMode === 'webspeech'
+          ? new WebSpeechVoicePlayer({ lang: 'en-US', wordsPerMinute: wpm })
+          : voiceMode === 'google-neural2'
+            ? new GoogleCloudVoicePlayer({
+                serverUrl: SERVER_URL,
+                wordsPerMinute: wpm,
+              })
+            : new StubVoicePlayer();
       const player = new ScriptPlayer(script, p, voice, {
         onSceneEnter: (scene, index) =>
           setScenePos({ index, total: script.scenes.length, id: scene.id }),
@@ -94,7 +104,7 @@ export function App() {
       setLoadedScript(label);
       setScenePos({ index: 0, total: script.scenes.length, id: script.scenes[0]?.id ?? '' });
     },
-    [audioOn, wpm],
+    [voiceMode, wpm],
   );
 
   const loadScript = (key: keyof typeof sampleScripts) => {
@@ -232,13 +242,22 @@ export function App() {
         </div>
         <div className="sb-toolbar-group">
           <span className="sb-toolbar-label">Script</span>
-          <button
-            disabled={!ready}
-            onClick={() => setAudioOn((v) => !v)}
-            title="Toggle between silent StubVoicePlayer and browser SpeechSynthesis. Takes effect on next load."
+          <label
+            className="sb-toolbar-label"
+            title="Voice engine. Takes effect on next script load."
           >
-            🔊 audio: {audioOn ? 'on' : 'off'}
-          </button>
+            voice
+            <select
+              disabled={!ready}
+              value={voiceMode}
+              onChange={(e) => setVoiceMode(e.target.value as VoiceMode)}
+              style={{ marginLeft: 6 }}
+            >
+              <option value="off">off (stub)</option>
+              <option value="webspeech">browser (Web Speech)</option>
+              <option value="google-neural2">Google Neural2</option>
+            </select>
+          </label>
           <label className="sb-toolbar-label" title="Lower wpm = scenes hold longer to let slower voices finish.">
             wpm
             <input

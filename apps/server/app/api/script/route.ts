@@ -27,7 +27,7 @@ const settingsSchema = z.object({
   pace: z.number().min(0).max(1).optional(),
   persona: z.enum(['corporate', 'character', 'friendly', 'stern']).optional(),
   voice: z.object({
-    provider: z.enum(['stub', 'elevenlabs', 'kokoro']).optional(),
+    provider: z.enum(['stub', 'elevenlabs', 'kokoro', 'google-neural2']).optional(),
     voiceId: z.string().optional(),
     speed: z.number().optional(),
   }).optional(),

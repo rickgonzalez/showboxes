@@ -9,7 +9,7 @@ export interface UserSettings {
   pace: number;
   persona: Persona;
   voice: {
-    provider: 'stub' | 'elevenlabs' | 'kokoro';
+    provider: 'stub' | 'elevenlabs' | 'kokoro' | 'google-neural2';
     voiceId: string;
     speed: number;
   };
