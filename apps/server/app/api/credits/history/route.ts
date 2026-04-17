@@ -1,18 +1,19 @@
 import { NextResponse } from 'next/server';
-import { getBalance } from '@/lib/credits/ledger';
+import { AuthError, requireUser } from '@/lib/auth/session';
+import { getBalanceForUser } from '@/lib/credits/ledger';
 
-/**
- * GET /api/credits/history?email=foo@bar.com
- *
- * Returns the last 20 ledger entries for account history UIs. Stubbed against
- * the in-memory ledger for now; paginates properly once the Prisma models land.
- */
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const email = searchParams.get('email');
-  if (!email) {
-    return NextResponse.json({ error: 'email query param required' }, { status: 400 });
+  let user;
+  try {
+    user = await requireUser(req);
+  } catch (e) {
+    if (e instanceof AuthError)
+      return NextResponse.json({ error: e.kind }, { status: 401 });
+    throw e;
   }
-  const { balance, recentEntries } = await getBalance({ email });
-  return NextResponse.json({ email, balance, entries: recentEntries });
+
+  const { balance, availableBalance, recentEntries } =
+    await getBalanceForUser(user.id);
+
+  return NextResponse.json({ balance, availableBalance, entries: recentEntries });
 }

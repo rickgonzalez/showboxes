@@ -1,18 +1,19 @@
 import { NextResponse } from 'next/server';
-import { getBalance } from '@/lib/credits/ledger';
+import { AuthError, requireUser } from '@/lib/auth/session';
+import { getBalanceForUser } from '@/lib/credits/ledger';
 
-/**
- * GET /api/credits/balance?email=foo@bar.com
- *
- * Stubbed: pre-auth v1 identifies the account by email passed as a query
- * param. Swap this for a session lookup as soon as Clerk/OAuth lands.
- */
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const email = searchParams.get('email');
-  if (!email) {
-    return NextResponse.json({ error: 'email query param required' }, { status: 400 });
+  let user;
+  try {
+    user = await requireUser(req);
+  } catch (e) {
+    if (e instanceof AuthError)
+      return NextResponse.json({ error: e.kind }, { status: 401 });
+    throw e;
   }
-  const { balance, recentEntries } = await getBalance({ email });
-  return NextResponse.json({ email, balance, recentEntries });
+
+  const { balance, availableBalance, recentEntries } =
+    await getBalanceForUser(user.id);
+
+  return NextResponse.json({ balance, availableBalance, recentEntries });
 }

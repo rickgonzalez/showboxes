@@ -50,6 +50,40 @@ export async function startAnalyze(
   return (await res.json()) as { id: string; status: string };
 }
 
+export interface AnalyzeEstimate {
+  usd: number;
+  credits: number;
+  reasoning: string;
+}
+
+export interface AnalyzeEstimateResponse {
+  estimate: AnalyzeEstimate;
+  /** Ledger balance, or null when the caller isn't authenticated. */
+  balance: number | null;
+  /** Ledger balance minus held reservations. Null when unauthenticated. */
+  availableBalance: number | null;
+}
+
+/**
+ * Pre-flight estimate for an analysis run. Pure calculation — no side
+ * effects, no auth required. Returns the user's balance when signed in
+ * so the triage modal can show "~X credits · you have Y".
+ */
+export async function fetchAnalyzeEstimate(
+  mode: AnalysisMode | undefined,
+  triageReport: TriageReport,
+): Promise<AnalyzeEstimateResponse> {
+  const res = await fetch(api('/api/analyze/estimate'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ mode, triageReport }),
+  });
+  if (!res.ok) {
+    throw new Error(`estimate failed: ${res.status} ${await res.text()}`);
+  }
+  return (await res.json()) as AnalyzeEstimateResponse;
+}
+
 /**
  * Run the triage pass. Synchronous on the server (<60s typical).
  * Returns a TriageReport the UI uses to render the focus chooser.

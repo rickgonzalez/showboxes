@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   DEFAULT_DEPTH,
   LARGE_REPO_FILE_THRESHOLD,
   type AnalysisMode,
   type TriageReport,
 } from '@showboxes/shared-types';
+import {
+  fetchAnalyzeEstimate,
+  type AnalyzeEstimateResponse,
+} from './api';
 
 interface TriageModalProps {
   report: TriageReport;
@@ -67,7 +71,47 @@ export function TriageModal({ report, onConfirm, onCancel }: TriageModalProps) {
     }
   };
 
-  const canConfirm = buildMode() !== null;
+  const mode = buildMode();
+  const canConfirm = mode !== null;
+
+  // Fetch an estimate whenever the user changes mode/subsystems/depth. We
+  // debounce by keying the effect on a serialized mode so rapid slider
+  // drags don't spam the server. Failures are non-fatal — we just hide
+  // the preview rather than block the analysis.
+  const modeKey = mode ? JSON.stringify(mode) : '';
+  const [estimate, setEstimate] = useState<AnalyzeEstimateResponse | null>(null);
+  const [estimating, setEstimating] = useState(false);
+  const [estimateError, setEstimateError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!mode) {
+      setEstimate(null);
+      return;
+    }
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      setEstimating(true);
+      setEstimateError(null);
+      fetchAnalyzeEstimate(mode, report)
+        .then((res) => {
+          if (!cancelled) setEstimate(res);
+        })
+        .catch((e) => {
+          if (!cancelled) setEstimateError((e as Error).message);
+        })
+        .finally(() => {
+          if (!cancelled) setEstimating(false);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modeKey]);
+
+  const insufficient =
+    estimate?.availableBalance != null &&
+    estimate.availableBalance < estimate.estimate.credits;
 
   return (
     <div className="sb-modal-backdrop" onClick={onCancel}>
@@ -191,13 +235,55 @@ export function TriageModal({ report, onConfirm, onCancel }: TriageModalProps) {
           </div>
         )}
 
+        <div className="sb-modal-estimate">
+          {estimating && !estimate && (
+            <span className="sb-modal-estimate-loading">Estimating cost…</span>
+          )}
+          {estimate && (
+            <>
+              <span className="sb-modal-estimate-main">
+                ~{estimate.estimate.credits} credits
+                <span className="sb-modal-estimate-usd">
+                  (${estimate.estimate.usd.toFixed(2)})
+                </span>
+              </span>
+              {estimate.availableBalance != null ? (
+                <span
+                  className={
+                    insufficient
+                      ? 'sb-modal-estimate-balance sb-modal-estimate-low'
+                      : 'sb-modal-estimate-balance'
+                  }
+                >
+                  You have {estimate.availableBalance.toLocaleString()}.
+                  {insufficient && ' Top up before running.'}
+                </span>
+              ) : (
+                <span className="sb-modal-estimate-balance sb-modal-estimate-muted">
+                  Sign in to see your balance.
+                </span>
+              )}
+              <span
+                className="sb-modal-estimate-reasoning"
+                title={estimate.estimate.reasoning}
+              >
+                {estimate.estimate.reasoning}
+              </span>
+            </>
+          )}
+          {estimateError && !estimate && (
+            <span className="sb-modal-estimate-error">
+              Couldn&apos;t load estimate: {estimateError}
+            </span>
+          )}
+        </div>
+
         <div className="sb-modal-footer">
           <button onClick={onCancel}>cancel</button>
           <button
             className="sb-modal-primary"
             disabled={!canConfirm}
             onClick={() => {
-              const mode = buildMode();
               if (mode) onConfirm(mode);
             }}
           >

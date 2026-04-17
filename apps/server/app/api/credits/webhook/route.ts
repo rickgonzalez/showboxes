@@ -1,57 +1,99 @@
 import { NextResponse } from 'next/server';
-import { credit } from '@/lib/credits/ledger';
+import { getStripe } from '@/lib/stripe';
+import { creditUser } from '@/lib/credits/ledger';
+import { prisma } from '@/lib/prisma';
 
-/**
- * POST /api/credits/webhook
- *
- * Stripe webhook target. This stub:
- *  - Accepts the request body as raw text.
- *  - If STRIPE_WEBHOOK_SECRET is set, will verify the signature (sketched below).
- *  - On a `payment_intent.succeeded` event it credits the corresponding account.
- *
- * A production implementation:
- *  - MUST verify the Stripe signature with `stripe.webhooks.constructEvent`
- *    using the raw body buffer (Next's App Router supports this via Request.text()).
- *  - Looks up the Purchase row by intent id, marks it succeeded, writes a
- *    LedgerEntry, stashes the entry id on the purchase.
- *  - Is idempotent: Stripe re-delivers on network failures, so re-running the
- *    same event id must be a no-op.
- */
 export async function POST(req: Request) {
-  const body = await req.text();
+  const rawBody = await req.text();
+  const stripe = getStripe();
+  const whSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-  // const stripeKey = process.env.STRIPE_SECRET_KEY;
-  // const whSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  // if (stripeKey && whSecret) {
-  //   const Stripe = (await import('stripe')).default;
-  //   const stripe = new Stripe(stripeKey);
-  //   const sig = req.headers.get('stripe-signature') ?? '';
-  //   try {
-  //     const event = stripe.webhooks.constructEvent(body, sig, whSecret);
-  //     if (event.type === 'payment_intent.succeeded') {
-  //       const pi = event.data.object as any;
-  //       const email  = pi.metadata?.email;
-  //       const credits = Number(pi.metadata?.credits ?? 0);
-  //       if (email && credits > 0) {
-  //         await credit({ email }, credits, 'purchase', pi.id, `Stripe payment ${pi.id}`);
-  //       }
-  //     }
-  //   } catch (err) {
-  //     return NextResponse.json({ error: 'signature verification failed' }, { status: 400 });
-  //   }
-  //   return NextResponse.json({ received: true });
-  // }
+  // --- Real Stripe path ---
+  if (stripe && whSecret) {
+    const sig = req.headers.get('stripe-signature') ?? '';
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(rawBody, sig, whSecret);
+    } catch (err) {
+      console.error('[webhook] signature verification failed:', err);
+      return NextResponse.json(
+        { error: 'signature verification failed' },
+        { status: 400 },
+      );
+    }
 
-  // Stub path — for dev, accept a simplified `{ email, credits }` payload so
-  // we can exercise the ledger end-to-end without Stripe.
+    if (event.type === 'payment_intent.succeeded') {
+      const pi = event.data.object;
+      const paymentIntentId = pi.id;
+
+      const purchase = await prisma.purchase.findUnique({
+        where: { stripePaymentIntentId: paymentIntentId },
+      });
+
+      if (!purchase) {
+        console.warn(`[webhook] no Purchase for PI ${paymentIntentId}`);
+        return NextResponse.json({ received: true });
+      }
+
+      // Idempotency: already processed
+      if (purchase.status === 'succeeded') {
+        return NextResponse.json({ received: true });
+      }
+
+      // Credit the user (deduplicates on refType + refId)
+      await creditUser({
+        userId: purchase.userId,
+        amount: purchase.credits,
+        refType: 'purchase',
+        refId: paymentIntentId,
+        memo: `Purchase ${purchase.sku} (${purchase.credits} credits)`,
+      });
+
+      const ledgerEntry = await prisma.ledgerEntry.findFirst({
+        where: {
+          userId: purchase.userId,
+          refType: 'purchase',
+          refId: paymentIntentId,
+        },
+        select: { id: true },
+      });
+
+      await prisma.purchase.update({
+        where: { id: purchase.id },
+        data: {
+          status: 'succeeded',
+          creditLedgerEntryId: ledgerEntry?.id ?? null,
+        },
+      });
+    }
+
+    return NextResponse.json({ received: true });
+  }
+
+  // --- Dev stub path (no STRIPE_WEBHOOK_SECRET) ---
+  console.warn(
+    '[webhook] STRIPE_WEBHOOK_SECRET not set — using dev stub. '
+    + 'Do NOT run like this in production.',
+  );
   try {
-    const parsed = JSON.parse(body) as { email?: string; credits?: number; ref?: string };
+    const parsed = JSON.parse(rawBody) as {
+      email?: string;
+      credits?: number;
+      ref?: string;
+    };
     if (parsed.email && parsed.credits) {
-      await credit({ email: parsed.email }, parsed.credits, 'purchase', parsed.ref, 'dev webhook stub');
+      const { credit } = await import('@/lib/credits/ledger');
+      await credit(
+        { email: parsed.email },
+        parsed.credits,
+        'purchase',
+        parsed.ref,
+        'dev webhook stub',
+      );
       return NextResponse.json({ _stub: true, received: true });
     }
   } catch {
-    /* ignore — body wasn't JSON */
+    /* body wasn't JSON */
   }
   return NextResponse.json({ _stub: true, received: true, note: 'no-op stub' });
 }

@@ -1,6 +1,7 @@
 //apps/server/app/page.tsx
 import HeroPlayerSlot from './components/HeroPlayerSlot';
 import InlineLottie from './components/InlineLottie';
+import UserMenu from './components/UserMenu';
 
 const PLAYER_URL = process.env.NEXT_PUBLIC_PLAYER_URL ?? 'http://localhost:5173';
 
@@ -15,9 +16,9 @@ export default function Home() {
           <a href="#how">How it works</a>
           <a href="#what">What you get</a>
           <a href="#pricing">Pricing</a>
-          <a href="https://github.com" aria-label="GitHub">GitHub</a>
+          <a href={PLAYER_URL}>Player</a>
         </div>
-        <a href={PLAYER_URL} className="nav-cta">Open the player →</a>
+        <UserMenu />
       </nav>
 
       {/* ---------- HERO ---------- */}

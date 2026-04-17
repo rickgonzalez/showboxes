@@ -1519,6 +1519,32 @@ button:disabled {
   background: rgba(96, 165, 250, 0.3) !important;
 }
 
+/* Pre-analysis estimate strip — quiet confirmation, not a pitch. */
+.sb-modal-estimate {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: baseline;
+  padding: 12px 20px 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.sb-modal-estimate-main { font-weight: 600; color: #f1f5f9; }
+.sb-modal-estimate-usd { margin-left: 6px; color: rgba(255, 255, 255, 0.55); font-weight: 400; }
+.sb-modal-estimate-balance { color: rgba(255, 255, 255, 0.7); }
+.sb-modal-estimate-low { color: #fca5a5; font-weight: 600; }
+.sb-modal-estimate-muted { color: rgba(255, 255, 255, 0.55); font-style: italic; }
+.sb-modal-estimate-loading { color: rgba(255, 255, 255, 0.55); font-style: italic; }
+.sb-modal-estimate-reasoning {
+  flex-basis: 100%;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.01em;
+}
+.sb-modal-estimate-error { color: #fca5a5; font-size: 12px; }
+
 /* ---------- flag note modal ---------- */
 
 .sb-flag-backdrop {
