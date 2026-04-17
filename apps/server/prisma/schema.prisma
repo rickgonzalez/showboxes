@@ -35,12 +35,22 @@ model Analysis {
   // one for the triage session that preceded it. Scripts derived from
   // this Analysis read these forward into their own rollup.
   stageCosts Json?
+  // The User who started this run. Nullable for pre-auth rows and server-
+  // initiated runs. Populated from the session on /api/analyze entry.
+  userId         String?
+  // CreditReservation held for this run. Cleared on settle/release but
+  // left populated for audit — ledger entries reference it via refId.
+  reservationId  String?
+  // Actual credits debited when the reservation settled. Null while the
+  // analysis is still running or if it errored before settle.
+  debitedCredits Int?
   error     String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
   @@index([repoUrl])
   @@index([status])
+  @@index([userId])
 }
 
 // One row per successfully generated presentation script. Scripts are
@@ -126,4 +136,114 @@ model Gnome {
   externalAgentVersion Int?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+}
+
+// The account owner of a credit balance. Email-keyed for MVP; when Clerk
+// (or equivalent) lands, migrate by email and add a real auth userId
+// alongside. `balance` is a materialized cache — always recomputable by
+// summing LedgerEntry.amount for the user.
+model User {
+  id               String   @id @default(cuid())
+  email            String   @unique
+  emailVerified    DateTime?
+  // Stripe customer id — created on first checkout, reused thereafter.
+  stripeCustomerId String?  @unique
+  balance          Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  ledgerEntries LedgerEntry[]
+  reservations  CreditReservation[]
+  purchases     Purchase[]
+  sessions      UserSession[]
+  magicLinks    MagicLink[]
+}
+
+// Append-only credit ledger. Positive = credit in (purchase, grant,
+// refund). Negative = debit out (usage, adjustment). Never updated,
+// never deleted — balance corrections are written as new entries.
+model LedgerEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  amount    Int      // signed
+  kind      String   // 'purchase' | 'grant' | 'usage' | 'refund' | 'adjustment' | 'reservation_settle'
+  refType   String   // 'purchase' | 'grant' | 'analysis' | 'adjustment' | 'reservation'
+  refId     String?
+  memo      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([refType, refId])
+}
+
+// Held credits that are neither spent nor spendable. Created before
+// Agent 1b runs, settled or released when it completes. Create does
+// NOT write a LedgerEntry — settle does (signed debit), release does
+// not. Available balance = User.balance - sum(held reservations).
+model CreditReservation {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  amount        Int      // always positive — the held amount
+  refType       String   // 'analysis' for v1
+  refId         String   // e.g. Analysis.id
+  status        String   // 'held' | 'settled' | 'released' | 'expired'
+  // Actual amount debited when this reservation settled; may be less
+  // than `amount` if the job cost less than estimated.
+  settledAmount Int?
+  // Safety net — the reaper auto-releases holds older than this.
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([refType, refId])
+}
+
+// Stripe purchase attempts. One row per PaymentIntent; flipped from
+// `pending` to `succeeded` by the webhook, which also writes the
+// corresponding positive LedgerEntry.
+model Purchase {
+  id                    String   @id @default(cuid())
+  userId                String
+  user                  User     @relation(fields: [userId], references: [id])
+  sku                   String
+  credits               Int
+  amountUsdCents        Int
+  stripePaymentIntentId String   @unique
+  status                String   // 'pending' | 'succeeded' | 'failed' | 'refunded'
+  creditLedgerEntryId   String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// Magic-link tokens. Opaque, single-use, short-lived. We store only
+// the sha256 hash of the token — the raw value lives in the email.
+model MagicLink {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Server-side session. The cookie carries only the id; everything
+// else (user, expiry, last-seen) lives here so sessions can be
+// revoked by deleting the row.
+model UserSession {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId])
 }

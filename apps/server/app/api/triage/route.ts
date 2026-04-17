@@ -6,6 +6,7 @@ import {
   runTriageSessionToCompletion,
 } from '@/lib/agents/triage-session';
 import { codeTriageGnome } from '@/lib/agents/code-triage.gnome';
+import { AuthError, requireUser } from '@/lib/auth/session';
 import Handlebars from 'handlebars';
 
 // Triage is meant to finish in <60s. We run it synchronously so the
@@ -17,6 +18,17 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: Request) {
+  // Triage is free but still gated — the session lets us rate-limit and
+  // attribute usage later. See docs/codesplain/AUTH-AND-BILLING-PLAN.md §Step 6.
+  try {
+    await requireUser(req);
+  } catch (e) {
+    if (e instanceof AuthError) {
+      return NextResponse.json({ error: e.kind }, { status: 401 });
+    }
+    throw e;
+  }
+
   let parsed: z.infer<typeof bodySchema>;
   try {
     parsed = bodySchema.parse(await req.json());

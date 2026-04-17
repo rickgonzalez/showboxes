@@ -9,7 +9,15 @@ import { codeTriageGnome } from '@/lib/agents/code-triage.gnome';
 import { renderCodeAnalysisPrompt } from '@/lib/agents/render-prompt';
 import { traceMode } from '@/lib/agents/trace-mode';
 import { fetchSessionTokens } from '@/lib/costs/managed-agents-usage';
-import { buildStageCost } from '@/lib/costs/rollup';
+import { buildStageCost, type StageCost } from '@/lib/costs/rollup';
+import { estimateAnalysisCost } from '@/lib/costs/estimate';
+import {
+  InsufficientCredits,
+  releaseReservation,
+  reserveCredits,
+  settleReservation,
+} from '@/lib/credits/ledger';
+import { AuthError, requireUser } from '@/lib/auth/session';
 import { DEFAULT_DEPTH, type TriageReport } from '@showboxes/shared-types';
 
 // Agent 1 runs long. Vercel default function timeout (10s Hobby / 60s Pro)
@@ -46,6 +54,16 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: Request) {
+  let user;
+  try {
+    user = await requireUser(req);
+  } catch (e) {
+    if (e instanceof AuthError) {
+      return NextResponse.json({ error: e.kind }, { status: 401 });
+    }
+    throw e;
+  }
+
   let parsed: z.infer<typeof bodySchema>;
   try {
     parsed = bodySchema.parse(await req.json());
@@ -57,17 +75,67 @@ export async function POST(req: Request) {
   }
 
   const triageReport = (parsed.triageReport as TriageReport | undefined) ?? undefined;
+  // If the client didn't pick a mode we estimate against overview — the
+  // full-coverage path renders the same default prompt.
+  const effectiveModeForEstimate = parsed.mode ?? { kind: 'overview' as const };
+  const estimate = estimateAnalysisCost({
+    triageReport: triageReport ?? null,
+    mode: effectiveModeForEstimate,
+    model: codeAnalysisGnome.defaultModel,
+  });
 
+  // Create the Analysis row up front so reserveCredits has a stable refId
+  // to tie the hold to. userId is captured here; reservationId is patched
+  // in once reserveCredits succeeds.
   const record = await prisma.analysis.create({
     data: {
       repoUrl: parsed.repoUrl,
       status: 'running',
       agentVersion: gnomeVersion(codeAnalysisGnome),
+      userId: user.id,
       // Populated below once we've rendered the prompt and know the
       // effective (post-clamp) mode.
       tunables: {} as unknown as object,
     },
   });
+
+  let reservationId: string;
+  try {
+    const reserved = await reserveCredits({
+      userId: user.id,
+      amount: estimate.credits,
+      refType: 'analysis',
+      refId: record.id,
+    });
+    reservationId = reserved.reservationId;
+    await prisma.analysis.update({
+      where: { id: record.id },
+      data: { reservationId },
+    });
+  } catch (e) {
+    if (e instanceof InsufficientCredits) {
+      await prisma.analysis
+        .update({
+          where: { id: record.id },
+          data: {
+            status: 'error',
+            error: 'INSUFFICIENT_CREDITS',
+          },
+        })
+        .catch(() => {});
+      return NextResponse.json(
+        {
+          error: 'INSUFFICIENT_CREDITS',
+          needed: e.needed,
+          have: e.have,
+          estimate,
+          id: record.id,
+        },
+        { status: 402 },
+      );
+    }
+    throw e;
+  }
 
   // Kick off the session. The create + first user.message go in the
   // foreground so we can surface quota / auth errors to the client;
@@ -106,6 +174,8 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     const message = (e as Error).message;
+    // Release the hold so the user isn't charged for a session that never ran.
+    await safeRelease(reservationId, `analyze start failed: ${message}`);
     await prisma.analysis.update({
       where: { id: record.id },
       data: { status: 'error', error: message },
@@ -127,7 +197,7 @@ export async function POST(req: Request) {
       // rollup can answer "what did this run cost me?" without a
       // second round-trip. Failures here are non-fatal — we still
       // want the analysis written.
-      const stageCosts = [];
+      const stageCosts: StageCost[] = [];
       if (parsed.triageSessionId) {
         const triageTokens = await fetchSessionTokens(parsed.triageSessionId);
         stageCosts.push(
@@ -139,24 +209,60 @@ export async function POST(req: Request) {
         buildStageCost('analysis', codeAnalysisGnome.defaultModel, analysisTokens),
       );
 
+      // Settle the reservation against actual cost. Policy-A per the plan:
+      // if actual > reserved we debit the overage anyway and log loudly.
+      const actualUsd = stageCosts.reduce((s, c) => s + c.costUsd, 0);
+      const actualCredits = Math.ceil(actualUsd * 100);
+      if (actualCredits > estimate.credits) {
+        console.warn(
+          `[credits] overrun on analysis ${record.id}: estimate=${estimate.credits} actual=${actualCredits}`,
+        );
+      }
+      await safeSettle(reservationId, actualCredits, `analysis:${record.id}`);
+
       await prisma.analysis.update({
         where: { id: record.id },
         data: {
           status: 'ready',
           data: result.analysis as unknown as object,
           stageCosts: stageCosts as unknown as object,
+          debitedCredits: actualCredits,
         },
       });
     } catch (e) {
+      const message = (e as Error).message;
+      await safeRelease(reservationId, `analysis errored: ${message}`);
       await prisma.analysis.update({
         where: { id: record.id },
-        data: { status: 'error', error: (e as Error).message },
+        data: { status: 'error', error: message },
       });
     }
   });
 
   return NextResponse.json(
-    { id: record.id, sessionId, status: 'running' },
+    { id: record.id, sessionId, status: 'running', estimate },
     { status: 202 },
   );
+}
+
+// Reservation ops must never crash the surrounding analysis update — a
+// stuck reservation (picked up by the reaper) beats a stuck analysis row.
+async function safeRelease(reservationId: string, reason: string): Promise<void> {
+  try {
+    await releaseReservation(reservationId, reason);
+  } catch (e) {
+    console.error(`[credits] releaseReservation failed for ${reservationId}:`, e);
+  }
+}
+
+async function safeSettle(
+  reservationId: string,
+  actualCredits: number,
+  memo: string,
+): Promise<void> {
+  try {
+    await settleReservation(reservationId, actualCredits, memo);
+  } catch (e) {
+    console.error(`[credits] settleReservation failed for ${reservationId}:`, e);
+  }
 }

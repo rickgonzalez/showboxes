@@ -10,6 +10,7 @@ import {
   formatRollupLine,
   type StageCost,
 } from '@/lib/costs/rollup';
+import { AuthError, requireUser } from '@/lib/auth/session';
 
 /**
  * /api/script — Agent 2 (Producer/Director).
@@ -49,6 +50,18 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: Request) {
+  // Script generation is free under the MVP debit policy — the Analysis
+  // debit already covers it. Still requires a session so Script rows are
+  // attributable. See docs/codesplain/AUTH-AND-BILLING-PLAN.md §Step 7.
+  try {
+    await requireUser(req);
+  } catch (e) {
+    if (e instanceof AuthError) {
+      return NextResponse.json({ error: e.kind }, { status: 401 });
+    }
+    throw e;
+  }
+
   let parsed: z.infer<typeof bodySchema>;
   try {
     parsed = bodySchema.parse(await req.json());
