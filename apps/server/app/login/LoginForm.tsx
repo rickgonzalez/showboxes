@@ -30,10 +30,11 @@ export default function LoginForm() {
     setStatus('sending');
     setErrorMsg(null);
     try {
+      const next = new URLSearchParams(window.location.search).get('next');
       const res = await fetch('/api/auth/request', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email: trimmed }),
+        body: JSON.stringify({ email: trimmed, ...(next ? { next } : {}) }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({ error: 'request failed' }));

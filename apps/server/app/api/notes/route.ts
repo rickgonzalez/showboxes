@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { AuthError, requireUser } from '@/lib/auth/session';
 
 /**
  * /api/notes — capture reviewer notes against a script scene.
@@ -8,10 +9,15 @@ import { prisma } from '@/lib/prisma';
  * The player's "flag" button pauses playback and POSTs here with the
  * current scene context. Notes are stored flat in ScriptNote; there's no
  * retrieval endpoint yet — the user queries the DB directly (pgAdmin).
+ *
+ * Author-only. Notes are an internal tuning tool — the viewer-mode
+ * embed does not render the flag button at all. We still enforce
+ * auth + owner-match here so the endpoint isn't a spam vector.
+ * See EMBED-AND-AUTH-PLAN.md §Access rules.
  */
 
 const bodySchema = z.object({
-  scriptId: z.string().nullish(),
+  scriptId: z.string().min(1),
   scriptLabel: z.string().nullish(),
   analysisId: z.string().nullish(),
   repoUrl: z.string().nullish(),
@@ -26,6 +32,16 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: Request) {
+  let user;
+  try {
+    user = await requireUser(req);
+  } catch (e) {
+    if (e instanceof AuthError) {
+      return NextResponse.json({ error: e.kind }, { status: 401 });
+    }
+    throw e;
+  }
+
   let parsed: z.infer<typeof bodySchema>;
   try {
     parsed = bodySchema.parse(await req.json());
@@ -36,10 +52,19 @@ export async function POST(req: Request) {
     );
   }
 
+  const script = await prisma.script.findUnique({
+    where: { id: parsed.scriptId },
+    select: { userId: true },
+  });
+  if (!script || script.userId !== user.id) {
+    // 404 rather than 403 — don't reveal which ids exist to non-owners.
+    return NextResponse.json({ error: 'not found' }, { status: 404 });
+  }
+
   try {
     const saved = await prisma.scriptNote.create({
       data: {
-        scriptId: parsed.scriptId ?? null,
+        scriptId: parsed.scriptId,
         scriptLabel: parsed.scriptLabel ?? null,
         analysisId: parsed.analysisId ?? null,
         repoUrl: parsed.repoUrl ?? null,

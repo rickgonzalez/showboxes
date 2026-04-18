@@ -73,6 +73,16 @@ model Script {
   focusInstructions String?
   producerModel     String?
   usage             Json?    // { inputTokens, outputTokens }
+  // The User who owns this Script. Nullable for legacy rows; canReadScript
+  // treats unowned + private as unreachable. Populated from the session on
+  // /api/script entry.
+  userId            String?
+  // 'private' (owner-only) | 'unlisted' (anyone with shareToken). 'public'
+  // is reserved for a future release and currently rejected by canReadScript.
+  visibility        String   @default("private")
+  // Random 32-byte URL-safe token. Required when visibility='unlisted';
+  // null otherwise. Rotating invalidates any existing embeds.
+  shareToken        String?  @unique
   error             String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -80,6 +90,8 @@ model Script {
   @@index([repoUrl])
   @@index([analysisId])
   @@index([createdAt])
+  @@index([userId])
+  @@index([shareToken])
 }
 
 // One row per note/flag captured by a reviewer while watching a script

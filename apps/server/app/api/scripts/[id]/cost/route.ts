@@ -13,13 +13,27 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import type { CostRollup } from '@/lib/costs/rollup';
+import { AuthError, requireUser } from '@/lib/auth/session';
 
 interface Params {
   params: Promise<{ id: string }>;
 }
 
-export async function GET(_req: Request, ctx: Params) {
+// Owner-only. Cost data is an internal signal — even holders of a
+// valid unlisted shareToken don't see it. See EMBED-AND-AUTH-PLAN
+// §Watch-outs ("Don't leak StageCosts on unlisted Scripts").
+export async function GET(req: Request, ctx: Params) {
   const { id } = await ctx.params;
+
+  let user;
+  try {
+    user = await requireUser(req);
+  } catch (e) {
+    if (e instanceof AuthError) {
+      return NextResponse.json({ error: e.kind }, { status: 401 });
+    }
+    throw e;
+  }
 
   const row = await prisma.script.findUnique({
     where: { id },
@@ -30,9 +44,14 @@ export async function GET(_req: Request, ctx: Params) {
       producerModel: true,
       usage: true,
       createdAt: true,
+      userId: true,
     },
   });
   if (!row) {
+    return NextResponse.json({ error: 'not found' }, { status: 404 });
+  }
+  if (row.userId !== user.id) {
+    // 404 rather than 403 — don't reveal which ids exist to non-owners.
     return NextResponse.json({ error: 'not found' }, { status: 404 });
   }
 

@@ -3,10 +3,13 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { generateMagicLinkToken, MAGIC_LINK_TTL_MINUTES } from '@/lib/auth/tokens';
 import { sendMagicLinkEmail } from '@/lib/auth/email';
+import { isSecureRequest } from '@/lib/auth/cookies';
+import { buildNextCookie, safeNextPath } from '@/lib/auth/next';
 import { FREE_TIER_CREDITS } from '@/lib/credits/prices';
 
 const bodySchema = z.object({
   email: z.string().email(),
+  next: z.string().optional(),
 });
 
 // POST /api/auth/request — body: { email }
@@ -25,6 +28,7 @@ export async function POST(req: Request) {
   }
 
   const email = parsed.email.trim().toLowerCase();
+  const next = safeNextPath(parsed.next);
 
   try {
     // Upsert the user. First-sight users get a free-tier grant; we guard
@@ -77,5 +81,9 @@ export async function POST(req: Request) {
     console.error('[auth/request] failed:', (e as Error).message);
   }
 
-  return NextResponse.json({ sent: true });
+  const res = NextResponse.json({ sent: true });
+  if (next) {
+    res.headers.append('Set-Cookie', buildNextCookie(next, isSecureRequest()));
+  }
+  return res;
 }

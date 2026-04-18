@@ -193,7 +193,12 @@ export interface AnalysisJSON {
  * receives this from /api/analyze/:id so it can show status, cache by
  * repo URL, and know when the analysis is ready.
  */
-export type AnalysisStatus = 'running' | 'ready' | 'error';
+export type AnalysisStatus =
+  | 'running'
+  | 'ready'
+  | 'error'
+  | 'cancelling'
+  | 'cancelled';
 
 export interface AnalysisRecord {
   id: string;

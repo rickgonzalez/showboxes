@@ -4,7 +4,13 @@ import { hashToken } from '@/lib/auth/tokens';
 import {
   buildSessionCookie,
   isSecureRequest,
+  parseCookieHeader,
 } from '@/lib/auth/cookies';
+import {
+  buildClearNextCookie,
+  NEXT_COOKIE_NAME,
+  safeNextPath,
+} from '@/lib/auth/next';
 import { sessionExpiry, sessionMaxAgeSeconds } from '@/lib/auth/session';
 
 // GET /api/auth/verify?token=... — the landing URL from the magic-link email.
@@ -50,13 +56,14 @@ export async function GET(req: Request) {
     secure: isSecureRequest(),
   });
 
-  return new NextResponse(null, {
-    status: 302,
-    headers: {
-      Location: `${appUrl}/`,
-      'Set-Cookie': cookie,
-    },
-  });
+  const cookies = parseCookieHeader(req.headers.get('cookie'));
+  const nextPath = safeNextPath(cookies[NEXT_COOKIE_NAME]);
+
+  const headers = new Headers({ Location: `${appUrl}${nextPath ?? '/generate'}` });
+  headers.append('Set-Cookie', cookie);
+  headers.append('Set-Cookie', buildClearNextCookie(isSecureRequest()));
+
+  return new NextResponse(null, { status: 302, headers });
 }
 
 function redirect(location: string): NextResponse {

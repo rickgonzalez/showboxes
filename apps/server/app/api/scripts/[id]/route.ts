@@ -5,17 +5,37 @@ import type {
   ScriptRecord,
   ScriptStatus,
 } from '@showboxes/shared-types';
+import {
+  canReadScript,
+  extractShareToken,
+  getOptionalUser,
+} from '@/lib/access';
 
 interface Params {
   params: Promise<{ id: string }>;
 }
 
-export async function GET(_req: Request, ctx: Params) {
+export async function GET(req: Request, ctx: Params) {
   const { id } = await ctx.params;
 
   const row = await prisma.script.findUnique({ where: { id } });
   if (!row) {
     return NextResponse.json({ error: 'not found' }, { status: 404 });
+  }
+
+  const user = await getOptionalUser(req);
+  const decision = canReadScript(row, {
+    user,
+    providedToken: extractShareToken(req),
+  });
+  if (!decision.ok) {
+    const status =
+      decision.reason === 'unauthorized'
+        ? 401
+        : decision.reason === 'forbidden'
+          ? 403
+          : 404;
+    return NextResponse.json({ error: decision.reason }, { status });
   }
 
   const record: ScriptRecord = {
@@ -29,8 +49,10 @@ export async function GET(_req: Request, ctx: Params) {
     data: (row.data as unknown as PresentationScript | null) ?? null,
     focusInstructions: row.focusInstructions,
     producerModel: row.producerModel,
-    usage:
-      (row.usage as unknown as ScriptRecord['usage']) ?? null,
+    // Cost signals are internal — only the owner sees them.
+    usage: decision.isOwner
+      ? ((row.usage as unknown as ScriptRecord['usage']) ?? null)
+      : null,
     error: row.error,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

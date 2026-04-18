@@ -369,3 +369,11 @@ Each of these is a natural-sized PR. Run them in sequence; don't parallelize —
 2. **Magic-link expiry.** 15 minutes is standard; some users find it too short. 30 is also defensible.
 3. **Email provider.** Recommending Resend because it's the lowest-friction; Postmark/SendGrid work the same. Decide based on whatever's already in your infra.
 4. **Estimate accuracy gate.** Do we want to refuse to run if `estimate > balance * 2`? That would prevent an obvious "you can't afford this" case before reserving. Nice-to-have, not MVP.
+
+---
+
+## Follow-ups from step 9/10 implementation
+
+- **Cross-origin session in the triage modal.** The player runs on a different origin (`:5173`) from the server (`:3001`). `next.config.ts` sets `Access-Control-Allow-Origin: *`, which means the session cookie does **not** ride along on the estimate call from inside the player — so the TriageModal shows "Sign in to see your balance" even when the user is logged in on the server. The estimate number itself is still correct. Fix options: tighten CORS to the player origin + `Access-Control-Allow-Credentials: true` + pass `credentials: 'include'` on fetches, or proxy the player through the server origin in prod. Worth addressing in the UI-cleanup pass.
+- **Top-up page is a stub for Stripe UI.** `/account/topup` currently calls `/api/credits/checkout` and renders the raw `clientSecret` + purchase id. Plugging in Stripe's Payment Element to bind to that client secret is a separate pass.
+- **UserMenu placeholder vs sign-in flash.** UserMenu renders a blank pill while `/api/auth/me` resolves so already-authed loads don't flash "Sign in". Intentional — flag if it reads as laggy in practice.

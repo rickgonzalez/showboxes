@@ -182,6 +182,27 @@ export async function runSessionToCompletion(
   );
 }
 
+/**
+ * Best-effort interrupt for a running session. Used by the /api/analyze/:id/cancel
+ * route. Returns normally whether or not the interrupt succeeded — the caller
+ * flips Analysis.status regardless; runSessionToCompletion's throw or the
+ * after() block's error handler finishes the bookkeeping.
+ */
+export async function interruptSession(sessionId: string): Promise<void> {
+  try {
+    await managedAgentsApi<unknown>(
+      'POST',
+      `/v1/sessions/${sessionId}/events${BETA_QS}`,
+      { events: [{ type: 'user.interrupt' }] },
+    );
+  } catch (err) {
+    console.warn(
+      `[session ${sessionId}] interrupt failed (non-fatal):`,
+      (err as Error).message,
+    );
+  }
+}
+
 async function resolveCustomToolCall(
   sessionId: string,
   customToolUseId: string,

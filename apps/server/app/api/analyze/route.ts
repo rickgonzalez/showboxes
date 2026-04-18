@@ -193,6 +193,15 @@ export async function POST(req: Request) {
     try {
       const result = await runSessionToCompletion(sessionId);
 
+      // Between starting the session and finishing, the user may have
+      // hit cancel. If so we still want to settle against partial costs
+      // — the stage completed some work before interrupt landed.
+      const midFlight = await prisma.analysis.findUnique({
+        where: { id: record.id },
+        select: { status: true },
+      });
+      const wasCancelled = midFlight?.status === 'cancelling';
+
       // Capture per-stage Anthropic usage so the downstream Script
       // rollup can answer "what did this run cost me?" without a
       // second round-trip. Failures here are non-fatal — we still
@@ -218,12 +227,18 @@ export async function POST(req: Request) {
           `[credits] overrun on analysis ${record.id}: estimate=${estimate.credits} actual=${actualCredits}`,
         );
       }
-      await safeSettle(reservationId, actualCredits, `analysis:${record.id}`);
+      await safeSettle(
+        reservationId,
+        actualCredits,
+        wasCancelled ? `cancelled:${record.id}` : `analysis:${record.id}`,
+      );
 
       await prisma.analysis.update({
         where: { id: record.id },
         data: {
-          status: 'ready',
+          status: wasCancelled ? 'cancelled' : 'ready',
+          // Even on cancel, persist the payload if the agent happened
+          // to finish before the interrupt — no reason to throw it away.
           data: result.analysis as unknown as object,
           stageCosts: stageCosts as unknown as object,
           debitedCredits: actualCredits,
@@ -231,6 +246,61 @@ export async function POST(req: Request) {
       });
     } catch (e) {
       const message = (e as Error).message;
+      // If the session errored because we interrupted it, treat this as
+      // a cancel, not an error. Settle whatever partial usage Anthropic
+      // reported; fall back to releasing the full hold if tokens are 0.
+      const midFlight = await prisma.analysis
+        .findUnique({
+          where: { id: record.id },
+          select: { status: true },
+        })
+        .catch(() => null);
+
+      if (midFlight?.status === 'cancelling') {
+        let partialCredits = 0;
+        const stageCosts: StageCost[] = [];
+        try {
+          const analysisTokens = await fetchSessionTokens(sessionId);
+          stageCosts.push(
+            buildStageCost(
+              'analysis',
+              codeAnalysisGnome.defaultModel,
+              analysisTokens,
+            ),
+          );
+          partialCredits = Math.ceil(
+            stageCosts.reduce((s, c) => s + c.costUsd, 0) * 100,
+          );
+        } catch (usageErr) {
+          console.warn(
+            `[credits] usage fetch failed on cancel for ${record.id}:`,
+            (usageErr as Error).message,
+          );
+        }
+
+        if (partialCredits > 0) {
+          await safeSettle(
+            reservationId,
+            partialCredits,
+            `cancelled:${record.id}`,
+          );
+        } else {
+          await safeRelease(
+            reservationId,
+            `cancelled before measurable cost: ${record.id}`,
+          );
+        }
+        await prisma.analysis.update({
+          where: { id: record.id },
+          data: {
+            status: 'cancelled',
+            stageCosts: stageCosts as unknown as object,
+            debitedCredits: partialCredits,
+          },
+        });
+        return;
+      }
+
       await safeRelease(reservationId, `analysis errored: ${message}`);
       await prisma.analysis.update({
         where: { id: record.id },

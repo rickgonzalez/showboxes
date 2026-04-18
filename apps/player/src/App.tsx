@@ -123,6 +123,11 @@ export function App() {
   const submitFlag = async () => {
     const script = currentScriptRef.current;
     if (!script) return;
+    const scriptId = currentScriptIdRef.current;
+    if (!scriptId) {
+      setFlagError('flagging requires a persisted script (sample scripts cannot be flagged)');
+      return;
+    }
     const text = flagText.trim();
     if (!text) {
       setFlagError('note is required');
@@ -137,7 +142,7 @@ export function App() {
     setFlagError(null);
     try {
       const saved = await postNote({
-        scriptId: currentScriptIdRef.current,
+        scriptId,
         scriptLabel: loadedScript,
         analysisId: currentAnalysisIdRef.current,
         repoUrl: script.meta?.repoUrl ?? null,

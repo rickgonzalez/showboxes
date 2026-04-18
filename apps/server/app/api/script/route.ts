@@ -53,8 +53,9 @@ export async function POST(req: Request) {
   // Script generation is free under the MVP debit policy — the Analysis
   // debit already covers it. Still requires a session so Script rows are
   // attributable. See docs/codesplain/AUTH-AND-BILLING-PLAN.md §Step 7.
+  let user;
   try {
-    await requireUser(req);
+    user = await requireUser(req);
   } catch (e) {
     if (e instanceof AuthError) {
       return NextResponse.json({ error: e.kind }, { status: 401 });
@@ -140,6 +141,10 @@ export async function POST(req: Request) {
           producerModel: parsed.model ?? null,
           // `usage` column now holds the full CostRollup — not just producer tokens.
           usage: rollup as unknown as object,
+          userId: user.id,
+          // New scripts start private; owners opt-in to 'unlisted' via a
+          // share flow (not built in this PR).
+          visibility: 'private',
         },
         select: { id: true },
       });
