@@ -2350,6 +2350,7 @@ body,
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  gap: 20px;
 }
 
 .sb-generate-side-column {
@@ -2465,6 +2466,273 @@ body,
   color: var(--cs-ink-soft);
   font-size: 13px;
   line-height: 1.5;
+}
+
+/* --- Recent runs card (state 1, under the URL card) ------------------
+   A second card in the left column listing the user's saved scripts.
+   Two-line rows: owner/repo on top, label · relative-date on the
+   bottom. Play + Share actions on the right. Whole-row click plays. */
+
+.sb-generate-runs {
+  position: relative;
+  padding: 24px 24px 18px;
+}
+
+.sb-generate-runs-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.sb-generate-runs-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--cs-ink);
+  margin: 0;
+}
+
+.sb-generate-runs-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--cs-brand-soft);
+  color: var(--cs-brand-deep-ink);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.sb-generate-runs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sb-generate-runs-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--cs-border);
+}
+
+/* First row gets a dashed divider above it to visually separate from
+   the header; subsequent rows keep the solid border-top. */
+.sb-generate-runs-row:first-child {
+  border-top: 1px dashed var(--cs-border);
+  padding-top: 14px;
+  margin-top: 4px;
+}
+
+/* Whole-left-side is a click target that plays the script. Strip button
+   defaults so it reads as a row, not a button. */
+.sb-generate-runs-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: color 120ms ease;
+}
+
+.sb-generate-runs-row-main:hover .sb-generate-runs-repo,
+.sb-generate-runs-row-main:focus-visible .sb-generate-runs-repo {
+  color: var(--cs-brand-deep);
+}
+
+.sb-generate-runs-row-main:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(29, 122, 183, 0.18);
+}
+
+.sb-generate-runs-repo {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--cs-ink);
+  letter-spacing: -0.005em;
+  line-height: 1.25;
+  /* Truncate a long owner/repo rather than wrap. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 120ms ease;
+}
+
+.sb-generate-runs-meta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--cs-ink-soft);
+  line-height: 1.35;
+  min-width: 0;
+}
+
+.sb-generate-runs-label {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--cs-ink-soft);
+  letter-spacing: 0.01em;
+  /* Prevent very long labels from pushing the date off-row. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+
+.sb-generate-runs-dot {
+  color: var(--cs-ink-muted);
+  opacity: 0.6;
+}
+
+.sb-generate-runs-date {
+  color: var(--cs-ink-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sb-generate-runs-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.sb-generate-runs-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--cs-brand-deep);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.sb-generate-runs-action:hover {
+  background: var(--cs-brand-soft);
+  color: var(--cs-brand-deep-ink);
+}
+
+.sb-generate-runs-action:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(29, 122, 183, 0.18);
+}
+
+.sb-generate-runs-action-muted {
+  color: var(--cs-ink-soft);
+}
+
+.sb-generate-runs-action-muted:hover {
+  background: var(--cs-bg-alt);
+  color: var(--cs-ink);
+}
+
+.sb-generate-runs-more {
+  display: block;
+  padding: 12px 0 2px;
+  margin-top: 4px;
+  border-top: 1px dashed var(--cs-border);
+  color: var(--cs-brand-deep);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  text-decoration: none;
+}
+
+.sb-generate-runs-more:hover {
+  color: var(--cs-brand-deep-ink);
+}
+
+/* Tiny floating confirmation after Share click. Positioned inside the
+   card so it doesn't jump to the viewport edge. */
+.sb-generate-runs-toast {
+  position: absolute;
+  right: 20px;
+  bottom: 14px;
+  padding: 6px 12px;
+  background: var(--cs-ink);
+  color: #fff;
+  font-size: 12px;
+  border-radius: 999px;
+  box-shadow: 0 10px 30px -12px rgba(14, 34, 53, 0.45);
+  animation: sb-generate-runs-toast-in 180ms ease-out;
+}
+
+@keyframes sb-generate-runs-toast-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Skeleton rows while listScripts is in flight. */
+.sb-generate-runs-skeleton {
+  display: block;
+  padding: 14px 0;
+}
+
+.sb-generate-runs-skel-line {
+  height: 12px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--cs-bg-alt) 0%,
+    rgba(29, 122, 183, 0.08) 50%,
+    var(--cs-bg-alt) 100%
+  );
+  background-size: 200% 100%;
+  animation: sb-generate-runs-shimmer 1.4s ease-in-out infinite;
+}
+
+.sb-generate-runs-skel-line-a { width: 45%; margin-bottom: 8px; }
+.sb-generate-runs-skel-line-b { width: 70%; height: 10px; }
+
+@keyframes sb-generate-runs-shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-generate-runs-skel-line {
+    animation: none;
+    background: var(--cs-bg-alt);
+  }
+  .sb-generate-runs-toast {
+    animation: none;
+  }
+}
+
+/* Mobile: actions stack below the main row on narrow screens so the
+   label + date still fit on one line. */
+@media (max-width: 520px) {
+  .sb-generate-runs-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .sb-generate-runs-actions {
+    justify-content: flex-end;
+  }
 }
 
 .sb-generate-card {
@@ -2841,6 +3109,13 @@ body,
   grid-template-columns: 1fr;
   gap: 10px;
   margin-top: 4px;
+}
+
+/* When only one loop button is present (e.g. replaying a saved script
+   with no TriageReport to loop back to), center it instead of leaving
+   an empty grid cell. */
+.sb-generate-player-loop:has(> button:only-child) {
+  justify-items: center;
 }
 
 /* Tablet and up: widen, elevate cards, side-by-side loop buttons. */

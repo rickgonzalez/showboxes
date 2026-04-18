@@ -28,11 +28,14 @@ import {
   cancelAnalysis,
   fetchMe,
   getAnalysis,
+  getScript,
+  listScripts,
   postScript,
   runTriage,
   startAnalyze,
   type MeResponse,
 } from './api';
+import type { ScriptSummary } from '@showboxes/shared-types';
 
 type FlowState =
   | { kind: 'url' }
@@ -54,9 +57,12 @@ type FlowState =
     }
   | {
       kind: 'playing';
-      repoUrl: string;
-      report: TriageReport;
-      analysis: AnalysisRecord;
+      /** Null when we replayed a saved script that has no associated repo in state. */
+      repoUrl: string | null;
+      /** Null when replaying a saved script — no triage report to reuse. */
+      report: TriageReport | null;
+      /** Null when replaying a saved script — the loop-back button hides in that case. */
+      analysis: AnalysisRecord | null;
       script: PresentationScript;
     };
 
@@ -86,6 +92,27 @@ export function GenerateFlow({ designSize = DEFAULT_DESIGN_SIZE }: GenerateFlowP
   const [error, setError] = useState<string | null>(null);
   const triageAbortRef = useRef<AbortController | null>(null);
   const pollAbortRef = useRef<AbortController | null>(null);
+
+  /** Jump straight to playback with a saved script, bypassing triage/analysis. */
+  const replaySaved = useCallback(async (scriptId: string) => {
+    setError(null);
+    try {
+      const record = await getScript(scriptId);
+      if (!record.data) {
+        setError(`That run didn't finish — can't replay it.`);
+        return;
+      }
+      setState({
+        kind: 'playing',
+        repoUrl: null,
+        report: null,
+        analysis: null,
+        script: record.data,
+      });
+    } catch (e) {
+      setError(`Couldn't load that run: ${(e as Error).message}`);
+    }
+  }, []);
 
   // Hydrate auth on mount so the URL screen can label the button correctly.
   useEffect(() => {
@@ -302,12 +329,15 @@ export function GenerateFlow({ designSize = DEFAULT_DESIGN_SIZE }: GenerateFlowP
       <main className="sb-generate-main">
         <div className="sb-generate-flow-column">
           {state.kind === 'url' && (
-            <UrlStep
-              signedIn={Boolean(me)}
-              authLoaded={meLoaded}
-              error={error}
-              onSubmit={startTriage}
-            />
+            <>
+              <UrlStep
+                signedIn={Boolean(me)}
+                authLoaded={meLoaded}
+                error={error}
+                onSubmit={startTriage}
+              />
+              {me && <RecentRuns onPlay={replaySaved} />}
+            </>
           )}
           {state.kind === 'triage' && (
             <RunningStep
@@ -352,12 +382,15 @@ export function GenerateFlow({ designSize = DEFAULT_DESIGN_SIZE }: GenerateFlowP
             <PlayingStep
               script={state.script}
               designSize={designSize}
-              onRerun={() =>
-                setState({
-                  kind: 'choices',
-                  repoUrl: state.repoUrl,
-                  report: state.report,
-                })
+              onRerun={
+                state.repoUrl && state.report
+                  ? () =>
+                      setState({
+                        kind: 'choices',
+                        repoUrl: state.repoUrl!,
+                        report: state.report!,
+                      })
+                  : null
               }
               onRestart={reset}
             />
@@ -372,6 +405,199 @@ export function GenerateFlow({ designSize = DEFAULT_DESIGN_SIZE }: GenerateFlowP
         <div className="sb-generate-error-toast">{error}</div>
       )}
     </div>
+  );
+}
+
+// ------------------------- RecentRuns -------------------------
+
+/**
+ * Parse `owner/repo` out of a GitHub URL. Falls back to the raw URL for
+ * anything that doesn't match (gist links, forks, gitlab mirrors). We
+ * don't need to be clever — the display is advisory.
+ */
+function parseRepoName(url: string): string {
+  const m = url.match(/github\.com[/:]([^/]+)\/([^/?#]+)/i);
+  if (!m) return url;
+  return `${m[1]}/${m[2].replace(/\.git$/, '')}`;
+}
+
+/**
+ * Render an absolute ISO timestamp as a short relative string. The
+ * full timestamp goes on `title=` so the user can hover to see it.
+ * Deliberately simple — date-fns would be overkill for five buckets.
+ */
+function formatRelative(iso: string): string {
+  const now = Date.now();
+  const then = new Date(iso).getTime();
+  const diffSec = Math.round((now - then) / 1000);
+  if (diffSec < 60) return 'just now';
+  const diffMin = Math.round(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHour = Math.round(diffMin / 60);
+  if (diffHour < 24) return `${diffHour}h ago`;
+  const diffDay = Math.round(diffHour / 24);
+  if (diffDay === 1) return 'yesterday';
+  if (diffDay < 7) return `${diffDay}d ago`;
+  if (diffDay < 30) return `${Math.round(diffDay / 7)}w ago`;
+  if (diffDay < 365) return `${Math.round(diffDay / 30)}mo ago`;
+  return `${Math.round(diffDay / 365)}y ago`;
+}
+
+const RECENT_RUNS_LIMIT = 5;
+
+/**
+ * "Your recent runs" — saved-script list rendered below the URL card on
+ * the landing (state 1) step. Hidden entirely when the user has no
+ * saved scripts, so first-time users see only the URL card.
+ *
+ * The Share action is a stub today; it'll flip Script.visibility and
+ * mint a shareToken once the server route lands (see
+ * docs/codesplain/EMBED-AND-AUTH-PLAN.md §Not in any step).
+ */
+function RecentRuns({ onPlay }: { onPlay: (scriptId: string) => void }) {
+  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<ScriptSummary[]>([]);
+  const [shareToast, setShareToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listScripts()
+      .then((rows) => {
+        if (cancelled) return;
+        setItems(rows.filter((r) => r.status === 'ready'));
+      })
+      .catch((e) => {
+        // Non-fatal — the surface is advisory. Log and render empty.
+        console.warn('[generate] listScripts failed:', (e as Error).message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Dismiss share toast after a beat.
+  useEffect(() => {
+    if (!shareToast) return;
+    const h = window.setTimeout(() => setShareToast(null), 2200);
+    return () => window.clearTimeout(h);
+  }, [shareToast]);
+
+  const handleShare = (id: string) => {
+    // TODO: swap for POST /api/scripts/:id/share once the route lands.
+    // For now we copy the owner-only viewer URL; the viewer will 403
+    // anyone but the owner until an unlisted token is minted.
+    const url = `${window.location.origin}/viewer/${id}`;
+    navigator.clipboard
+      ?.writeText(url)
+      .then(() => setShareToast('Link copied'))
+      .catch(() => setShareToast('Copy failed — try again'));
+  };
+
+  if (loading) {
+    return (
+      <section
+        className="sb-generate-card sb-generate-runs"
+        aria-busy="true"
+        aria-label="Loading your recent runs"
+      >
+        <div className="sb-generate-runs-header">
+          <h2 className="sb-generate-runs-title">Your recent runs</h2>
+        </div>
+        <ul className="sb-generate-runs-list">
+          {[0, 1, 2].map((i) => (
+            <li key={i} className="sb-generate-runs-row sb-generate-runs-skeleton">
+              <div className="sb-generate-runs-skel-line sb-generate-runs-skel-line-a" />
+              <div className="sb-generate-runs-skel-line sb-generate-runs-skel-line-b" />
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  }
+
+  if (items.length === 0) {
+    // Empty state is intentionally hidden — first-time users see only
+    // the URL card. Matches the design call in the frontend-design pass.
+    return null;
+  }
+
+  const visible = items.slice(0, RECENT_RUNS_LIMIT);
+  const hiddenCount = items.length - visible.length;
+
+  return (
+    <section className="sb-generate-card sb-generate-runs" aria-label="Your recent runs">
+      <div className="sb-generate-runs-header">
+        <h2 className="sb-generate-runs-title">Your recent runs</h2>
+        <span
+          className="sb-generate-runs-count"
+          aria-label={`${items.length} saved`}
+        >
+          {items.length}
+        </span>
+      </div>
+      <ul className="sb-generate-runs-list">
+        {visible.map((it) => (
+          <li key={it.id} className="sb-generate-runs-row">
+            <button
+              type="button"
+              className="sb-generate-runs-row-main"
+              onClick={() => onPlay(it.id)}
+              title={`Play · id ${it.id}`}
+            >
+              <span className="sb-generate-runs-repo">
+                {parseRepoName(it.repoUrl)}
+              </span>
+              <span className="sb-generate-runs-meta">
+                <span className="sb-generate-runs-label">{it.label}</span>
+                <span
+                  className="sb-generate-runs-dot"
+                  aria-hidden="true"
+                >
+                  ·
+                </span>
+                <span
+                  className="sb-generate-runs-date"
+                  title={new Date(it.updatedAt).toLocaleString()}
+                >
+                  {formatRelative(it.updatedAt)}
+                </span>
+              </span>
+            </button>
+            <div className="sb-generate-runs-actions">
+              <button
+                type="button"
+                className="sb-generate-runs-action"
+                onClick={() => onPlay(it.id)}
+                aria-label={`Play ${parseRepoName(it.repoUrl)}`}
+              >
+                <span aria-hidden="true">▶</span> Play
+              </button>
+              <button
+                type="button"
+                className="sb-generate-runs-action sb-generate-runs-action-muted"
+                onClick={() => handleShare(it.id)}
+                aria-label={`Share ${parseRepoName(it.repoUrl)}`}
+              >
+                <span aria-hidden="true">⧉</span> Share
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {hiddenCount > 0 && (
+        <a className="sb-generate-runs-more" href="#">
+          See all {items.length} runs →
+        </a>
+      )}
+      {shareToast && (
+        <div className="sb-generate-runs-toast" role="status">
+          {shareToast}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -649,7 +875,8 @@ function PlayingStep({
 }: {
   script: PresentationScript;
   designSize: DesignSize;
-  onRerun: () => void;
+  /** Null when the script was replayed from history — no triage to loop back to. */
+  onRerun: (() => void) | null;
   onRestart: () => void;
 }) {
   const presenterRef = useRef<Presenter | null>(null);
@@ -783,9 +1010,11 @@ function PlayingStep({
           </label>
         </div>
         <div className="sb-generate-player-loop">
-          <button className="sb-generate-primary" onClick={onRerun}>
-            Try another angle
-          </button>
+          {onRerun && (
+            <button className="sb-generate-primary" onClick={onRerun}>
+              Try another angle
+            </button>
+          )}
           <button className="sb-generate-ghost" onClick={onRestart}>
             Pick a new repo
           </button>

@@ -19,6 +19,7 @@ export interface DesignSize {
 }
 
 export const DEFAULT_DESIGN_SIZE: DesignSize = {
-  width: 1280,
-  height: 1280,
+  width: 1100,
+  height: 1100,
 };
+//1280×1280 is the original design size, but we're experimenting with 1000×1280 to see if a narrower aspect ratio works better for the hero embed. See
