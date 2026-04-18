@@ -149,3 +149,31 @@ Each is a small, independently-commitable PR.
 - **Notes are author-only.** Viewer-mode embeds do not render the flag button. `/api/notes` is locked to `requireUser` + owner-match. Notes remain an internal tuning tool for the core platform; enterprise-edition annotation/review flows are a separate conversation. Decided 2026-04-17.
 - **Analysis visibility: none.** Analyses are internal intermediate artifacts. The user flow (see upcoming GENERATE-FLOW-PLAN) runs triage → analysis → script as a single unbroken pipeline; the Analysis is never surfaced as its own screen, URL, or shareable resource. Access is owner-only via `userId`; no visibility toggle, no shareToken, no public route. If a future mode needs user-visible Analyses, add visibility then. Decided 2026-04-17.
 - **Private-repo handling is out of scope for this doc.** How we treat Scripts generated from private GitHub repos (enterprise-only? watermarks? extra access checks?) is a separate conversation.
+
+---
+
+## Update — 2026-04-18 (prod routing — same-origin shipped)
+
+This doc's §Embed HTML had always assumed `https://codesplain.io/viewer/:scriptId` — i.e. viewer lives same-origin with the server. Until this session that was aspirational: prod was actually two deployments (Next at `codesplain.io`, Vite SPA at a separate Vercel URL pointed to by `NEXT_PUBLIC_PLAYER_URL`). `transpilePackages` let Next *import* player components (e.g. `HeroPlayer` on the landing page) but did **not** bring the player's path-based router ([apps/player/src/main.tsx](../../apps/player/src/main.tsx)) into Next. Hitting `codesplain.io/generate` or `codesplain.io/viewer/:id` 404'd.
+
+### What shipped
+
+- **Next routes mounting player components same-origin:**
+  - [apps/server/app/generate/page.tsx](../../apps/server/app/generate/page.tsx) → `GenerateFlow`.
+  - [apps/server/app/viewer/[id]/page.tsx](../../apps/server/app/viewer/%5Bid%5D/page.tsx) → `Viewer` with `scriptId` + `?token=` from `useParams`/`useSearchParams`. This is the concrete URL the §Embed HTML section assumes.
+- **Subpath exports** on [apps/player/package.json](../../apps/player/package.json) for `./pipeline/GenerateFlow` and `./Viewer`. Barrel (`.`) unchanged.
+- **SSR guards** on `import.meta.env` in [apps/player/src/pipeline/api.ts:26](../../apps/player/src/pipeline/api.ts#L26) and [apps/player/src/Viewer.tsx:33](../../apps/player/src/Viewer.tsx#L33). Under Next SSR `import.meta.env` is `undefined`; guarded access falls back to `SERVER_URL = ''` which is correct for same-origin prod. No effect in Vite.
+- **Landing page** ([apps/server/app/page.tsx](../../apps/server/app/page.tsx)) — `PLAYER_URL` constant deleted; all player links point at same-origin `/generate`.
+- **Retire** the old `showboxes-player-*.vercel.app` deployment after a clean prod walkthrough.
+
+### Why this matters for the embed
+
+Viewer embeds were always going to be simplest with same-origin: the iframe URL is just `https://codesplain.io/viewer/:scriptId?token=…`, no cookie-domain gymnastics, no CORS-with-credentials. This update makes that real rather than aspirational.
+
+### Dev-loop CORS fix — still applies, as-is
+
+The §Dev-loop CORS fix remains a **dev-only** concern. In dev, player on `:5173` → server on `:3001` is still two origins, and the Vite proxy described above is the right fix. The ambient `Access-Control-Allow-Origin: *` in [next.config.ts](../../apps/server/next.config.ts) is dead code in prod now that origins collapse; kept because it's still useful in dev for tooling that bypasses the proxy.
+
+### Prod env requirement (surfaced in the same walkthrough)
+
+`APP_URL=https://www.codesplain.io` must be set in prod. Magic-link emails and the post-verify redirect read it; unset falls back to `http://localhost:3001`. `NEXT_PUBLIC_PLAYER_URL` is no longer read and can be unset.

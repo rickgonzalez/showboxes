@@ -312,3 +312,35 @@ No changes to `GenerateFlow.tsx` or `pipeline/api.ts` were needed — the five e
 - [apps/server/app/login/LoginForm.tsx](apps/server/app/login/LoginForm.tsx) — forward `?next=`.
 - [apps/server/app/api/auth/verify/route.ts](apps/server/app/api/auth/verify/route.ts) — consume `cs_next`, redirect, clear.
 - Server dev `.env` — `APP_URL=http://localhost:5173` (non-code).
+
+---
+
+## Update — 2026-04-18 (prod routing — player unified under codesplain.io)
+
+First prod walkthrough surfaced a 404 on `https://www.codesplain.io/generate`. The earlier assumption that prod was "same-origin via `transpilePackages`" was wrong — `transpilePackages` lets Next import player *components*, but it does not bring the player's path-based router ([apps/player/src/main.tsx](apps/player/src/main.tsx)) into Next's route graph. Prod was actually two deployments (Next at `codesplain.io`, Vite SPA at a separate Vercel URL pointed to by `NEXT_PUBLIC_PLAYER_URL`), which also meant cross-origin cookies and the CORS-with-credentials problem were latent bugs waiting to hit.
+
+Resolution: mount the player components at matching Next routes so `codesplain.io` serves `/generate` and `/viewer/:id` same-origin. The [EMBED-AND-AUTH-PLAN.md §Embed HTML](./EMBED-AND-AUTH-PLAN.md) iframe URL already assumed this topology.
+
+### What shipped
+
+- **New Next pages** — thin client wrappers that render existing player components:
+  - [apps/server/app/generate/page.tsx](apps/server/app/generate/page.tsx) → `GenerateFlow`.
+  - [apps/server/app/viewer/[id]/page.tsx](apps/server/app/viewer/%5Bid%5D/page.tsx) → `Viewer` with `id` + `?token=` from `useParams`/`useSearchParams`.
+- **Subpath exports** added to [apps/player/package.json](apps/player/package.json): `./pipeline/GenerateFlow`, `./Viewer`. Barrel (`.`) unchanged. Next's `transpilePackages: ['@showboxes/player']` handles the TS/TSX source directly; no player build step added.
+- **SSR guards** on [apps/player/src/pipeline/api.ts:26](apps/player/src/pipeline/api.ts#L26) and [apps/player/src/Viewer.tsx:33](apps/player/src/Viewer.tsx#L33). `import.meta.env` is `undefined` under Next's server render — guarded access falls back to `SERVER_URL = ''`, which is correct for same-origin prod. Vite behavior unchanged.
+- **Ambient declaration** [apps/server/player-env.d.ts](apps/server/player-env.d.ts) — makes `ImportMeta.env` visible to the server's tsconfig so transpiled player files typecheck.
+- **Landing page** ([apps/server/app/page.tsx](apps/server/app/page.tsx)) — deleted the `NEXT_PUBLIC_PLAYER_URL` constant; all four links are now same-origin `/generate`.
+
+### Prod env
+
+- `APP_URL=https://www.codesplain.io` — required. Magic-link emails and the post-verify redirect read this; unset → falls back to `http://localhost:3001` (the bug that surfaced in the first prod walkthrough).
+- `NEXT_PUBLIC_PLAYER_URL` — no longer read. Can be unset.
+- Old `showboxes-player-*.vercel.app` deployment is redundant. Retire after a clean prod walkthrough.
+
+### Dev loop — unchanged
+
+Player still runs at `:5173` via Vite with the proxy to `:3001`. `main.tsx`'s path-based router still serves `/generate` and `/viewer/:id` from the Vite host. The Next pages only take over when you hit the server origin directly (which in prod is the only origin).
+
+### Implications for the cross-origin concerns in the 2026-04-17 updates
+
+The "Dev-loop CORS fix" and `cs_next` round-trip still apply in dev exactly as described — dev is where the two origins live. In prod, collapsing to one origin means: `cs_session` needs no `Domain` attribute, the `Access-Control-Allow-Origin: *` in [next.config.ts](apps/server/next.config.ts) is dead code (kept for dev), and `credentials: 'include'` works trivially.
