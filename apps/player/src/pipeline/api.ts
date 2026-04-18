@@ -23,7 +23,8 @@ export interface SavedScriptResult {
  * http://localhost:3001. In prod, the server is on the same origin
  * (codesplain.io) and the base is "".
  */
-const SERVER_URL = (import.meta.env.VITE_SERVER_URL ?? '').replace(/\/$/, '');
+// Guarded for non-Vite hosts (e.g. Next SSR) where `import.meta.env` is undefined.
+const SERVER_URL = ((import.meta as { env?: { VITE_SERVER_URL?: string } }).env?.VITE_SERVER_URL ?? '').replace(/\/$/, '');
 
 function api(path: string): string {
   return `${SERVER_URL}${path}`;

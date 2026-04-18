@@ -30,7 +30,8 @@ import {
  */
 
 type VoiceMode = 'off' | 'webspeech' | 'google-neural2';
-const SERVER_URL = (import.meta.env.VITE_SERVER_URL ?? '').replace(/\/$/, '');
+// Guarded for non-Vite hosts (e.g. Next SSR) where `import.meta.env` is undefined.
+const SERVER_URL = ((import.meta as { env?: { VITE_SERVER_URL?: string } }).env?.VITE_SERVER_URL ?? '').replace(/\/$/, '');
 
 type LoadState =
   | { kind: 'loading' }

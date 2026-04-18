@@ -3,8 +3,6 @@ import HeroPlayerSlot from './components/HeroPlayerSlot';
 import InlineLottie from './components/InlineLottie';
 import UserMenu from './components/UserMenu';
 
-const PLAYER_URL = process.env.NEXT_PUBLIC_PLAYER_URL ?? 'http://localhost:5173';
-
 export default function Home() {
   return (
     <>
@@ -16,7 +14,7 @@ export default function Home() {
           <a href="#how">How it works</a>
           <a href="#what">What you get</a>
           <a href="#pricing">Pricing</a>
-          <a href={PLAYER_URL}>Player</a>
+          <a href="/generate">Player</a>
         </div>
         <UserMenu />
       </nav>
@@ -36,7 +34,7 @@ export default function Home() {
               whichever human you need to bring along.
             </p>
             <div className="cta-row">
-              <a href={PLAYER_URL} className="btn-primary">Generate a walkthrough</a>
+              <a href="/generate" className="btn-primary">Generate a walkthrough</a>
               <a href="#how" className="btn-ghost">See how it works</a>
             </div>
           </div>
@@ -139,7 +137,7 @@ export default function Home() {
                 About 25 focused-brief analyses, or 60+ script re-renders. Use across
                 repos; credits don't expire.
               </p>
-              <a href={PLAYER_URL} className="btn-primary" style={{ display: 'inline-block' }}>
+              <a href="/generate" className="btn-primary" style={{ display: 'inline-block' }}>
                 Start building
               </a>
             </div>
@@ -153,7 +151,7 @@ export default function Home() {
           <div>© {new Date().getFullYear()} Horizon Two Labs · codesplain.io</div>
           <div style={{ display: 'flex', gap: 24 }}>
             <a href="/api/credits/pricing">Pricing</a>
-            <a href={PLAYER_URL}>Player</a>
+            <a href="/generate">Player</a>
             <a href="https://docs.anthropic.com">Built on Claude</a>
           </div>
         </div>
