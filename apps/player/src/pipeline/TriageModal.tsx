@@ -279,7 +279,7 @@ export function TriageModal({ report, onConfirm, onCancel }: TriageModalProps) {
         </div>
 
         <div className="sb-modal-footer">
-          <button onClick={onCancel}>cancel</button>
+          <button onClick={onCancel}>Cancel</button>
           <button
             className="sb-modal-primary"
             disabled={!canConfirm}
@@ -287,7 +287,7 @@ export function TriageModal({ report, onConfirm, onCancel }: TriageModalProps) {
               if (mode) onConfirm(mode);
             }}
           >
-            run deep analysis
+            Run analysis
           </button>
         </div>
       </div>

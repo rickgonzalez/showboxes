@@ -50,6 +50,9 @@ export function App() {
   const currentAnalysisIdRef = useRef<string | null>(null);
   const [flagOpen, setFlagOpen] = useState(false);
   const [flagText, setFlagText] = useState('');
+  const [flagSuspect, setFlagSuspect] = useState<
+    'analysis' | 'script' | 'template' | null
+  >(null);
   const [flagSaving, setFlagSaving] = useState(false);
   const [flagError, setFlagError] = useState<string | null>(null);
   const [flagSaved, setFlagSaved] = useState<string | null>(null);
@@ -115,6 +118,7 @@ export function App() {
     if (!loadedScript) return;
     playerRef.current?.pause();
     setFlagText('');
+    setFlagSuspect(null);
     setFlagError(null);
     setFlagSaved(null);
     setFlagOpen(true);
@@ -150,6 +154,7 @@ export function App() {
         sceneId: scene.id,
         sceneTemplate: scene.primitive?.template ?? 'unknown',
         note: text,
+        suspectArea: flagSuspect,
       });
       setFlagSaved(saved.id);
       setFlagOpen(false);
@@ -358,6 +363,22 @@ export function App() {
                   {currentAnalysisIdRef.current}
                 </div>
               )}
+            </div>
+            <div className="sb-flag-suspect">
+              <span className="sb-flag-suspect-label">suspect:</span>
+              {(['analysis', 'script', 'template'] as const).map((area) => (
+                <button
+                  key={area}
+                  type="button"
+                  className={`sb-flag-suspect-pill${flagSuspect === area ? ' sb-flag-suspect-pill-on' : ''}`}
+                  onClick={() => setFlagSuspect(flagSuspect === area ? null : area)}
+                >
+                  {area}
+                </button>
+              ))}
+              <span className="sb-flag-suspect-hint">
+                {flagSuspect ? '' : '(optional — leave blank if unsure)'}
+              </span>
             </div>
             <textarea
               className="sb-flag-textarea"

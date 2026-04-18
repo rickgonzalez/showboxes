@@ -110,10 +110,23 @@ model ScriptNote {
   sceneId        String
   sceneTemplate  String
   note           String   @db.Text
+  // Review workflow state. 'open' when captured; moves to 'in-progress'
+  // while a fix is being worked, 'resolved' once the underlying template
+  // or prompt change has landed, 'wontfix' if we decide not to act on it.
+  status         String   @default("open") // 'open' | 'in-progress' | 'resolved' | 'wontfix'
+  // Which layer the reviewer suspects is at fault: 'analysis' (Agent 1
+  // picked wrong content / wrong tone), 'script' (Agent 2 picked the
+  // wrong template or wrote bad narration/content), 'template' (the
+  // rendered primitive is buggy/cramped/overflows). Nullable because
+  // older rows predate this column and because the reviewer can skip
+  // the tag when unsure.
+  suspectArea    String?  // 'analysis' | 'script' | 'template' | null
   createdAt      DateTime @default(now())
 
   @@index([scriptId])
   @@index([createdAt])
+  @@index([status])
+  @@index([suspectArea])
 }
 
 // One row per Managed Agents environment we provision. Typically just

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type {
   AnalysisMode,
   AnalysisRecord,
@@ -9,12 +9,18 @@ import { defaultSettings } from '@showboxes/shared-types';
 import { Presentation } from '../react/Presentation';
 import type { Presenter } from '../service/presenter';
 import {
+  GoogleCloudVoicePlayer,
   ScriptPlayer,
   StubVoicePlayer,
-  WebSpeechVoicePlayer,
   type PlayerState,
   type VoicePlayer,
 } from '../player';
+import { DEFAULT_DESIGN_SIZE, type DesignSize } from '../designSize';
+
+// Guarded for non-Vite hosts (e.g. Next SSR) where `import.meta.env` is undefined.
+const SERVER_URL = (
+  (import.meta as { env?: { VITE_SERVER_URL?: string } }).env?.VITE_SERVER_URL ?? ''
+).replace(/\/$/, '');
 import { TriageModal } from './TriageModal';
 import {
   AnalyzeAuthError,
@@ -63,7 +69,17 @@ function formatElapsed(ms: number): string {
   return `${m}:${r.toString().padStart(2, '0')}`;
 }
 
-export function GenerateFlow() {
+export interface GenerateFlowProps {
+  /**
+   * Fixed-pixel design surface the player renders into. Defaults to
+   * DEFAULT_DESIGN_SIZE (1280×1280). Pass a smaller size to enlarge
+   * content in the same host frame; pass a larger size to give templates
+   * more room before scaling down.
+   */
+  designSize?: DesignSize;
+}
+
+export function GenerateFlow({ designSize = DEFAULT_DESIGN_SIZE }: GenerateFlowProps = {}) {
   const [state, setState] = useState<FlowState>({ kind: 'url' });
   const [me, setMe] = useState<MeResponse | null>(null);
   const [meLoaded, setMeLoaded] = useState(false);
@@ -284,71 +300,154 @@ export function GenerateFlow() {
       </header>
 
       <main className="sb-generate-main">
-        {state.kind === 'url' && (
-          <UrlStep
-            signedIn={Boolean(me)}
-            authLoaded={meLoaded}
-            error={error}
-            onSubmit={startTriage}
-          />
-        )}
-        {state.kind === 'triage' && (
-          <RunningStep
-            title="Scoping your codebase"
-            hint="~30s typical"
-            onCancel={() => {
-              triageAbortRef.current?.abort();
-              setState({ kind: 'url' });
-            }}
-            cancelLabel="Cancel"
-          />
-        )}
-        {state.kind === 'choices' && (
-          <TriageModal
-            report={state.report}
-            onConfirm={confirmChoices}
-            onCancel={() => setState({ kind: 'url' })}
-          />
-        )}
-        {state.kind === 'analysis' && (
-          <AnalysisStep
-            reserved={state.reserved}
-            onCancel={async () => {
-              try {
-                await cancelAnalysis(state.analysisId);
-              } catch (e) {
-                console.warn('[generate] cancel failed:', e);
+        <div className="sb-generate-flow-column">
+          {state.kind === 'url' && (
+            <UrlStep
+              signedIn={Boolean(me)}
+              authLoaded={meLoaded}
+              error={error}
+              onSubmit={startTriage}
+            />
+          )}
+          {state.kind === 'triage' && (
+            <RunningStep
+              title="Scoping your codebase"
+              hint="~30s typical"
+              onCancel={() => {
+                triageAbortRef.current?.abort();
+                setState({ kind: 'url' });
+              }}
+              cancelLabel="Cancel"
+            />
+          )}
+          {state.kind === 'choices' && (
+            <TriageModal
+              report={state.report}
+              onConfirm={confirmChoices}
+              onCancel={() => setState({ kind: 'url' })}
+            />
+          )}
+          {state.kind === 'analysis' && (
+            <AnalysisStep
+              reserved={state.reserved}
+              onCancel={async () => {
+                try {
+                  await cancelAnalysis(state.analysisId);
+                } catch (e) {
+                  console.warn('[generate] cancel failed:', e);
+                }
+                // Polling will pick up 'cancelled' and advance the UI.
+              }}
+            />
+          )}
+          {state.kind === 'script' && (
+            <RunningStep
+              title="Composing the script"
+              hint="Almost there"
+              onCancel={null}
+              cancelLabel=""
+            />
+          )}
+          {state.kind === 'playing' && (
+            <PlayingStep
+              script={state.script}
+              designSize={designSize}
+              onRerun={() =>
+                setState({
+                  kind: 'choices',
+                  repoUrl: state.repoUrl,
+                  report: state.report,
+                })
               }
-              // Polling will pick up 'cancelled' and advance the UI.
-            }}
-          />
-        )}
-        {state.kind === 'script' && (
-          <RunningStep
-            title="Composing the script"
-            hint="Almost there"
-            onCancel={null}
-            cancelLabel=""
-          />
-        )}
-        {state.kind === 'playing' && (
-          <PlayingStep
-            script={state.script}
-            onRerun={() =>
-              setState({
-                kind: 'choices',
-                repoUrl: state.repoUrl,
-                report: state.report,
-              })
-            }
-            onRestart={reset}
-          />
-        )}
+              onRestart={reset}
+            />
+          )}
+        </div>
+        <aside className="sb-generate-side-column" aria-label="Reading while you wait">
+          <BlogPanel />
+        </aside>
       </main>
 
       {error && state.kind === 'url' && (
         <div className="sb-generate-error-toast">{error}</div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Right-rail companion panel. Today this is a stub — a placeholder for
+ * daily-blog backlinks sourced from a sibling content project. Copy is
+ * intentionally light so the rail doesn't compete with the flow itself.
+ *
+ * TODO: wire to a real content feed (likely a static JSON at
+ * /content/daily.json populated by the sibling project).
+ */
+function BlogPanel() {
+  const items: Array<{
+    title: string;
+    excerpt: string;
+    href: string;
+    kind: 'research' | 'walkthrough';
+  }> = [
+    {
+      title: 'How we picked `focused-brief` over `deep-dive`',
+      excerpt:
+        'Depth is a slider, not a mode. Notes from a week of prompt tuning against large repos.',
+      href: '#',
+      kind: 'research',
+    },
+    {
+      title: 'Walkthrough: Anthropic SDK, end to end',
+      excerpt:
+        'Tool use, caching, and streaming — narrated scene by scene from the SDK source.',
+      href: '#',
+      kind: 'walkthrough',
+    },
+    {
+      title: 'Why sequence diagrams beat flow charts for request paths',
+      excerpt:
+        'When a diagram crosses four services, order of operations matters more than shape.',
+      href: '#',
+      kind: 'research',
+    },
+    {
+      title: 'Walkthrough: a Next.js App Router auth flow',
+      excerpt:
+        'Magic links, sessions, and the cookie gymnastics that tripped us up.',
+      href: '#',
+      kind: 'walkthrough',
+    },
+  ];
+
+  return (
+    <div className="sb-generate-blog">
+      <div className="sb-generate-blog-eyebrow">While you wait</div>
+      <h2 className="sb-generate-blog-title">Fresh reads from the lab</h2>
+      <p className="sb-generate-blog-hint">
+        Daily research and finished walkthroughs — pulled in from the content
+        team. A good place to land while the agents are busy.
+      </p>
+      <ul className="sb-generate-blog-list">
+        {items.map((it) => (
+          <li key={it.title} className="sb-generate-blog-item">
+            <a
+              className="sb-generate-blog-link"
+              href={it.href}
+              target={it.href === '#' ? undefined : '_blank'}
+              rel={it.href === '#' ? undefined : 'noreferrer'}
+            >
+              <span
+                className={`sb-generate-blog-tag sb-generate-blog-tag-${it.kind}`}
+              >
+                {it.kind === 'research' ? 'Research' : 'Walkthrough'}
+              </span>
+              <span className="sb-generate-blog-item-title">{it.title}</span>
+              <span className="sb-generate-blog-item-excerpt">{it.excerpt}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -415,7 +514,7 @@ function UrlStep({
           type="submit"
           disabled={!canSubmit}
         >
-          {signedIn ? 'Scope it' : 'Sign in to generate'}
+          {signedIn ? 'Generate a walkthrough' : 'Sign in to generate'}
         </button>
       </form>
       {touched && !valid && (
@@ -544,24 +643,50 @@ function AnalysisStep({
 
 function PlayingStep({
   script,
+  designSize,
   onRerun,
   onRestart,
 }: {
   script: PresentationScript;
+  designSize: DesignSize;
   onRerun: () => void;
   onRestart: () => void;
 }) {
   const presenterRef = useRef<Presenter | null>(null);
   const playerRef = useRef<ScriptPlayer | null>(null);
+  const stageBoxRef = useRef<HTMLDivElement | null>(null);
   const [playerState, setPlayerState] = useState<PlayerState>('idle');
   const [scenePos, setScenePos] = useState({ index: 0, total: 0 });
+  const [scale, setScale] = useState(1);
+  // Voice defaults to on (Google Neural2). Browsers block autoplay with
+  // audio unless the user gestures — so we arm paused and wait for the
+  // Play button instead of autoplaying.
   const [useVoice, setUseVoice] = useState(true);
+
+  // Scale the fixed-size design surface to fit the stage box at any
+  // viewport. Watches the box with a ResizeObserver; the chosen scale
+  // is the smaller of width/design.width and height/design.height so the
+  // surface always fits without overflowing. Re-runs when designSize
+  // changes so prop tweaks update live.
+  useLayoutEffect(() => {
+    const el = stageBoxRef.current;
+    if (!el) return;
+    const update = () => {
+      const { width, height } = el.getBoundingClientRect();
+      if (width === 0 || height === 0) return;
+      setScale(Math.min(width / designSize.width, height / designSize.height));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [designSize.width, designSize.height]);
 
   const armPlayer = useCallback(
     (p: Presenter) => {
       playerRef.current?.stop();
       const voice: VoicePlayer = useVoice
-        ? new WebSpeechVoicePlayer({ lang: 'en-US', wordsPerMinute: 150 })
+        ? new GoogleCloudVoicePlayer({ serverUrl: SERVER_URL, wordsPerMinute: 150 })
         : new StubVoicePlayer();
       const player = new ScriptPlayer(script, p, voice, {
         onSceneEnter: (_s, i) =>
@@ -570,7 +695,6 @@ function PlayingStep({
       });
       playerRef.current = player;
       setScenePos({ index: 0, total: script.scenes.length });
-      player.play();
     },
     [script, useVoice],
   );
@@ -599,10 +723,29 @@ function PlayingStep({
     };
   }, []);
 
+  const isPlaying = playerState === 'playing';
+
   return (
     <section className="sb-generate-player">
-      <div className="sb-generate-player-stage">
-        <Presentation onReady={handleReady} />
+      <div
+        className="sb-generate-player-stage"
+        ref={stageBoxRef}
+        style={{ aspectRatio: `${designSize.width} / ${designSize.height}` }}
+      >
+        {/* Fixed-size design surface. Templates are authored in absolute
+            pixels against `designSize`; this wrapper scales the whole thing
+            with a CSS transform so it fits without overflow. Same pattern
+            as HeroPlayer on the landing page. */}
+        <div
+          className="sb-generate-player-surface"
+          style={{
+            width: designSize.width,
+            height: designSize.height,
+            transform: `translate(-50%, -50%) scale(${scale})`,
+          }}
+        >
+          <Presentation onReady={handleReady} />
+        </div>
       </div>
       <div className="sb-generate-player-controls">
         <div className="sb-generate-player-info">
@@ -610,14 +753,13 @@ function PlayingStep({
         </div>
         <div className="sb-generate-player-buttons">
           <button
-            className="sb-generate-ghost"
+            className="sb-generate-primary sb-generate-play-btn"
             onClick={() =>
-              playerState === 'playing'
-                ? playerRef.current?.pause()
-                : playerRef.current?.play()
+              isPlaying ? playerRef.current?.pause() : playerRef.current?.play()
             }
+            aria-label={isPlaying ? 'Pause' : 'Play'}
           >
-            {playerState === 'playing' ? 'Pause' : 'Play'}
+            {isPlaying ? '❚❚ Pause' : '▶ Play'}
           </button>
           <button
             className="sb-generate-ghost"
@@ -645,7 +787,7 @@ function PlayingStep({
             Try another angle
           </button>
           <button className="sb-generate-ghost" onClick={onRestart}>
-            Start over
+            Pick a new repo
           </button>
         </div>
       </div>

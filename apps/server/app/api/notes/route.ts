@@ -25,6 +25,7 @@ const bodySchema = z.object({
   sceneId: z.string(),
   sceneTemplate: z.string(),
   note: z.string().min(1),
+  suspectArea: z.enum(['analysis', 'script', 'template']).nullish(),
 });
 
 export async function OPTIONS() {
@@ -72,6 +73,7 @@ export async function POST(req: Request) {
         sceneId: parsed.sceneId,
         sceneTemplate: parsed.sceneTemplate,
         note: parsed.note,
+        suspectArea: parsed.suspectArea ?? null,
       },
       select: { id: true, createdAt: true },
     });

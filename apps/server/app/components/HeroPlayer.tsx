@@ -21,17 +21,14 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-
-// Design surface size the player's templates are authored against.
-// Hero box is 1:1, so we use a square. See jolly-juggling-quiche.md.
-const DESIGN_W = 1280;
-const DESIGN_H = 1280;
 import {
   Presentation,
   ScriptPlayer,
   StubVoicePlayer,
   Presenter,
   sampleScripts,
+  DEFAULT_DESIGN_SIZE,
+  type DesignSize,
   type PresentationScript,
   type Scene,
 } from '@showboxes/player';
@@ -90,9 +87,19 @@ export interface HeroPlayerProps {
   /** Rendered if the script can't load or reduced-motion is on. */
   fallback?: React.ReactNode;
   style?: CSSProperties;
+  /**
+   * Fixed-pixel design surface the player renders into. Defaults to
+   * DEFAULT_DESIGN_SIZE (1280×1280). Pass a smaller size to enlarge
+   * content in the same host frame.
+   */
+  designSize?: DesignSize;
 }
 
-export default function HeroPlayer({ fallback, style }: HeroPlayerProps) {
+export default function HeroPlayer({
+  fallback,
+  style,
+  designSize = DEFAULT_DESIGN_SIZE,
+}: HeroPlayerProps) {
   const playerRef = useRef<ScriptPlayer | null>(null);
   const presenterRef = useRef<Presenter | null>(null);
   const outerRef = useRef<HTMLDivElement | null>(null);
@@ -105,13 +112,13 @@ export default function HeroPlayer({ fallback, style }: HeroPlayerProps) {
     const update = () => {
       const { width, height } = el.getBoundingClientRect();
       if (width === 0 || height === 0) return;
-      setScale(Math.min(width / DESIGN_W, height / DESIGN_H));
+      setScale(Math.min(width / designSize.width, height / designSize.height));
     };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [designSize.width, designSize.height]);
 
   // NOTE: reduced-motion fallback is intentionally disabled for now.
   // The hero loop *is* the product demo — hiding it for reduced-motion users
@@ -174,15 +181,16 @@ export default function HeroPlayer({ fallback, style }: HeroPlayerProps) {
       {/* Fixed-size design surface. The player's templates are authored in
           absolute pixels against this viewport; we shrink the whole thing
           with a CSS transform so it fits the hero box at any viewport size.
-          Absolutely positioned so its 1280×1280 intrinsic size does NOT
-          inflate the parent grid track in .hero-visual. */}
+          Absolutely positioned so its intrinsic size does NOT inflate the
+          parent grid track in .hero-visual. Size comes from the
+          `designSize` prop (default 1280×1280). */}
       <div
         style={{
           position: 'absolute',
           left: '50%',
           top: '50%',
-          width: DESIGN_W,
-          height: DESIGN_H,
+          width: designSize.width,
+          height: designSize.height,
           transform: `translate(-50%, -50%) scale(${scale})`,
           transformOrigin: 'center center',
         }}

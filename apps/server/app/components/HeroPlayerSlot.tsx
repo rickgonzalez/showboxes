@@ -16,6 +16,7 @@
  */
 
 import dynamic from 'next/dynamic';
+import type { DesignSize } from '@showboxes/player';
 import HeroLottie from './HeroLottie';
 
 const HeroPlaceholder = () => (
@@ -36,9 +37,15 @@ const HeroPlayer = dynamic(() => import('./HeroPlayer'), {
   loading: () => <HeroPlaceholder />,
 });
 
-export default function HeroPlayerSlot() {
+export interface HeroPlayerSlotProps {
+  /** Override the default 1280×1280 design surface. */
+  designSize?: DesignSize;
+}
+
+export default function HeroPlayerSlot({ designSize }: HeroPlayerSlotProps = {}) {
   return (
     <HeroPlayer
+      designSize={designSize}
       fallback={
         <HeroLottie
           src={undefined}

@@ -383,6 +383,14 @@ export interface PostNoteInput {
   sceneId: string;
   sceneTemplate: string;
   note: string;
+  /**
+   * Reviewer's best guess at which layer caused the issue:
+   *  - 'analysis'  Agent 1 produced wrong/off-tone content
+   *  - 'script'    Agent 2 picked the wrong template or wrote bad narration
+   *  - 'template'  the primitive itself rendered poorly
+   * Null/undefined means "not sure" — leave it and sort it out later.
+   */
+  suspectArea?: 'analysis' | 'script' | 'template' | null;
 }
 
 /** Save a reviewer flag/note against the current scene. */

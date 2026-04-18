@@ -26,3 +26,9 @@ export * from './templates';
 // drive scenes imperatively without the ScriptPlayer wrapper.
 export { Presenter } from './service/presenter';
 export type { TextBoxHandle } from './service/presenter';
+
+// Design-surface size. Embedders default to DEFAULT_DESIGN_SIZE but can
+// pass `designSize={{ width, height }}` to HeroPlayer / GenerateFlow to
+// experiment with different ratios or trigger a different scale.
+export { DEFAULT_DESIGN_SIZE } from './designSize';
+export type { DesignSize } from './designSize';
